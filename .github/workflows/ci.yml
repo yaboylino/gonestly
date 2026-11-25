@@ -29,10 +29,13 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
       - name: Verify modules
-        run: go mod verify
+        shell: bash
+        run: for m in . validator; do (cd $m && go mod verify) || exit 1; done
       - name: Test
         shell: bash
-        run: go test -race -shuffle=on -coverprofile=coverage.out ./...
+        run: |
+          go test -race -shuffle=on -coverprofile=coverage.out ./...
+          (cd validator && go test -race -shuffle=on ./...)
       - name: Coverage summary
         if: matrix.os == 'ubuntu-latest' && matrix.go == '1.27.x'
         run: go tool cover -func=coverage.out | tail -n 1 >> "$GITHUB_STEP_SUMMARY"
@@ -48,10 +51,15 @@ jobs:
         with:
           go-version: "1.27.x"
       - name: Check go.mod is tidy
-        run: go mod tidy -diff
+        run: for m in . validator; do (cd $m && go mod tidy -diff) || exit 1; done
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.15.0
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          working-directory: validator
+          args: --config ../.golangci.yml
 
   vulnerabilities:
     name: Vulnerabilities
@@ -64,4 +72,4 @@ jobs:
         with:
           go-version: "1.27.x"
       - name: Run govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
+        run: for m in . validator; do (cd $m && go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...) || exit 1; done

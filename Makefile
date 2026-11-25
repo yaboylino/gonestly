@@ -4,6 +4,9 @@ GOVULNCHECK_VERSION := v1.10.0
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
+# Every Go module in the repository; the validator has its own because of its dependency.
+MODULES := . validator
+
 .PHONY: check test cover lint fmt vuln tidy
 
 # check: run every check that CI runs
@@ -11,7 +14,7 @@ check: tidy lint test vuln
 
 # test: run the tests with the race detector
 test:
-	go test -race -shuffle=on ./...
+	@for m in $(MODULES); do (cd $$m && go test -race -shuffle=on ./...) || exit 1; done
 
 # cover: run the tests and open the coverage report
 cover:
@@ -20,16 +23,16 @@ cover:
 
 # lint: run the linters
 lint:
-	$(GOLANGCI_LINT) run
+	@for m in $(MODULES); do (cd $$m && $(GOLANGCI_LINT) run --config $(CURDIR)/.golangci.yml) || exit 1; done
 
 # fmt: format the code
 fmt:
-	$(GOLANGCI_LINT) fmt
+	@for m in $(MODULES); do (cd $$m && $(GOLANGCI_LINT) fmt --config $(CURDIR)/.golangci.yml) || exit 1; done
 
 # vuln: scan for known vulnerabilities
 vuln:
-	$(GOVULNCHECK) ./...
+	@for m in $(MODULES); do (cd $$m && $(GOVULNCHECK) ./...) || exit 1; done
 
 # tidy: verify that go.mod and go.sum are tidy
 tidy:
-	go mod tidy -diff
+	@for m in $(MODULES); do (cd $$m && go mod tidy -diff) || exit 1; done
