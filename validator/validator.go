@@ -70,11 +70,8 @@ func (v *Validator) ValidateStruct(value any) error {
 
 	fields := make([]gonestly.FieldError, 0, len(failures))
 	for _, failure := range failures {
-		fields = append(fields, gonestly.FieldError{
-			Field:   fieldPath(failure.Namespace()),
-			In:      source(rv.Type(), failure.StructNamespace()),
-			Message: message(failure),
-		})
+		field, in := locate(rv.Type(), failure.StructNamespace(), failure.Namespace())
+		fields = append(fields, gonestly.FieldError{Field: field, In: in, Message: message(failure)})
 	}
 	return gonestly.Invalid(fields...)
 }
@@ -99,20 +96,37 @@ func fieldPath(namespace string) string {
 	return path
 }
 
-// source finds where the top-level field of a failure is read from.
-func source(t reflect.Type, structNamespace string) string {
-	name := strings.Split(fieldPath(structNamespace), ".")[0]
-	name, _, _ = strings.Cut(name, "[")
-	f, ok := t.FieldByName(name)
-	if !ok {
-		return "body"
+// locate returns the name the client knows a failed field by, and where it is read from. An
+// embedded struct adds no level of its own, as in the JSON encoding and in binding.
+func locate(t reflect.Type, structNamespace, namespace string) (field, in string) {
+	goNames := strings.Split(fieldPath(structNamespace), ".")
+	names := strings.Split(fieldPath(namespace), ".")
+	if len(goNames) != len(names) {
+		return fieldPath(namespace), "body"
 	}
-	for _, s := range sources {
-		if _, ok := f.Tag.Lookup(s); ok {
-			return s
+	for i, goName := range goNames {
+		goName, _, _ = strings.Cut(goName, "[")
+		f, ok := t.FieldByName(goName)
+		if !ok {
+			break
 		}
+		ft := f.Type
+		if ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if _, named := f.Tag.Lookup("json"); f.Anonymous && ft.Kind() == reflect.Struct && !named && i < len(goNames)-1 {
+			t = ft
+			continue
+		}
+		in = "body"
+		for _, s := range sources {
+			if _, ok := f.Tag.Lookup(s); ok {
+				in = s
+			}
+		}
+		return strings.Join(names[i:], "."), in
 	}
-	return "body"
+	return fieldPath(namespace), "body"
 }
 
 func message(f playground.FieldError) string {
