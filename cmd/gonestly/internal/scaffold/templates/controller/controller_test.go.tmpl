@@ -1,0 +1,15 @@
+package {{.Names.Package}}_test
+
+import (
+	"net/http"
+	"testing"
+
+	"github.com/yaboylino/gonestly/gonestlytest"
+
+	"{{.Import}}"
+)
+
+func TestList(t *testing.T) {
+	app := gonestlytest.Start(t, {{.Names.Package}}.Module)
+	app.Get("/{{.Names.Kebab}}").ExpectStatus(http.StatusOK)
+}

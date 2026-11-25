@@ -1,0 +1,28 @@
+package main
+
+import (
+	"context"
+	"log/slog"
+	"os"
+
+	"github.com/yaboylino/gonestly"
+{{- if eq .Database "postgres"}}
+	_ "github.com/jackc/pgx/v5/stdlib"
+{{- else if eq .Database "sqlite"}}
+	_ "modernc.org/sqlite"
+{{- end}}
+
+	"{{.Module}}/internal/app"
+)
+
+func main() {
+	application, err := gonestly.New(app.Module)
+	if err != nil {
+		slog.Error("the application cannot be built", "error", err)
+		os.Exit(1)
+	}
+	if err := application.Run(context.Background()); err != nil {
+		slog.Error("the application stopped with an error", "error", err)
+		os.Exit(1)
+	}
+}

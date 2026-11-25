@@ -1,0 +1,10 @@
+CREATE TABLE {{.Names.Snake}} (
+{{- if eq .Database "postgres"}}
+  id         BIGSERIAL PRIMARY KEY,
+{{- else}}
+  id         INTEGER PRIMARY KEY,
+{{- end}}
+  name       TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

@@ -1,0 +1,61 @@
+package {{.Names.Package}}_test
+
+import (
+	"net/http"
+	"path/filepath"
+	"testing"
+
+	"github.com/yaboylino/gonestly"
+	"github.com/yaboylino/gonestly/gonestlytest"
+	"github.com/yaboylino/gonestly/sql"
+	"github.com/yaboylino/gonestly/validator"
+	_ "modernc.org/sqlite"
+
+	"{{.Import}}"
+	"{{.Module}}/migrations"
+)
+
+func start(t *testing.T) *gonestlytest.App {
+	t.Helper()
+	dsn := "file:" + filepath.Join(t.TempDir(), "test.db")
+	return gonestlytest.Start(t, &gonestly.Module{
+		Name: "test",
+		Imports: gonestly.Imports(
+			sql.Module(sql.Options{Driver: "sqlite", DSN: dsn, Migrations: migrations.Files}),
+			validator.Module(),
+			{{.Names.Package}}.Module,
+		),
+	})
+}
+
+func TestLifecycle(t *testing.T) {
+	app := start(t)
+
+	var created {{.Names.Package}}.{{.Names.Model}}
+	app.Post("/{{.Names.Kebab}}", map[string]string{"name": "First"}).ExpectStatus(http.StatusCreated).JSON(&created)
+	if created.ID == 0 || created.Name != "First" {
+		t.Fatalf("created = %+v", created)
+	}
+
+	var page {{.Names.Package}}.Page
+	app.Get("/{{.Names.Kebab}}").ExpectStatus(http.StatusOK).JSON(&page)
+	if page.Total != 1 || len(page.Items) != 1 {
+		t.Errorf("page = %+v", page)
+	}
+
+	var updated {{.Names.Package}}.{{.Names.Model}}
+	app.Put("/{{.Names.Kebab}}/1", map[string]string{"name": "Renamed"}).ExpectStatus(http.StatusOK).JSON(&updated)
+	if updated.Name != "Renamed" {
+		t.Errorf("updated = %+v", updated)
+	}
+
+	app.Delete("/{{.Names.Kebab}}/1").ExpectStatus(http.StatusNoContent)
+	app.Get("/{{.Names.Kebab}}/1").ExpectStatus(http.StatusNotFound)
+}
+
+func TestValidation(t *testing.T) {
+	problem := start(t).Post("/{{.Names.Kebab}}", map[string]string{}).Problem()
+	if problem.Status != http.StatusBadRequest || len(problem.Errors) != 1 || problem.Errors[0].Field != "name" {
+		t.Errorf("problem = %+v", problem)
+	}
+}

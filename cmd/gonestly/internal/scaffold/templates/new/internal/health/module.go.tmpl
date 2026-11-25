@@ -1,0 +1,10 @@
+// Package health tells whether the application is running.
+package health
+
+import "github.com/yaboylino/gonestly"
+
+// Module serves the health check.
+var Module = &gonestly.Module{
+	Name:        "health",
+	Controllers: gonestly.Controllers(NewController),
+}

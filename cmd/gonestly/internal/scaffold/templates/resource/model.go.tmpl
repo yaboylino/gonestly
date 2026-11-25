@@ -1,0 +1,18 @@
+package {{.Names.Package}}
+
+import "time"
+
+//go:generate gonestly generate columns
+
+// {{.Names.Model}} is one {{.Names.ModelWords}}.
+type {{.Names.Model}} struct {
+	ID        int64     `db:"id" json:"id"`
+	Name      string    `db:"name" json:"name"`
+	CreatedAt time.Time `db:"created_at,default" json:"createdAt"`
+	UpdatedAt time.Time `db:"updated_at,default" json:"updatedAt"`
+}
+
+// TableName returns the table of {{.Names.Words}}.
+func ({{.Names.Model}}) TableName() string {
+	return "{{.Names.Snake}}"
+}

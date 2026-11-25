@@ -1,0 +1,31 @@
+package app
+
+import (
+	"github.com/yaboylino/gonestly"
+	"github.com/yaboylino/gonestly/config"
+{{- if .Database}}
+	"github.com/yaboylino/gonestly/sql"
+{{- end}}
+	"github.com/yaboylino/gonestly/validator"
+
+	"{{.Module}}/internal/health"
+{{- if .Database}}
+	"{{.Module}}/migrations"
+{{- end}}
+)
+
+// Module is the root module of the application.
+var Module = &gonestly.Module{
+	Name: "app",
+	Imports: gonestly.Imports(
+		config.Module[Config](config.Options{}),
+		validator.Module(),
+{{- if .Database}}
+		sql.ModuleFunc(func(cfg Config) sql.Options {
+			return sql.Options{Driver: "{{.Driver}}", DSN: cfg.DatabaseURL, Migrations: migrations.Files}
+		}),
+{{- end}}
+		health.Module,
+	),
+	Providers: gonestly.Providers(NewServerConfig, NewOpenAPIConfig),
+}

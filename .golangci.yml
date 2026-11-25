@@ -43,6 +43,11 @@ linters:
       - path: _test\.go
         linters:
           - gosec
+      # The CLI reads project files and runs the go tool by design.
+      - path: cmd/gonestly/
+        linters:
+          - gosec
+        text: "G204|G304"
 
 formatters:
   enable:

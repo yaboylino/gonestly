@@ -1,0 +1,25 @@
+# {{.Title}}
+
+An API built with [Gonestly](https://yaboylino.github.io/gonestly-docs).
+
+## Development
+
+```sh
+gonestly dev
+```
+
+This starts the API on http://localhost:3000 and restarts it on every change. The
+documentation is served at http://localhost:3000/docs.
+
+| Command | What it does |
+| --- | --- |
+| `gonestly dev` | Runs the API and rebuilds it on every change |
+| `gonestly generate resource <name>` | Adds a complete resource with routes, service and table |
+| `gonestly routes` | Lists every route |
+| `go test ./...` | Runs the tests |
+{{- if .Database}}
+| `gonestly migrate create <name>` | Adds a migration |
+| `gonestly migrate status` | Shows which migrations are applied |
+{{- end}}
+
+Settings are read from environment variables and the `.env` file; see `.env.example`.

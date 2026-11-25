@@ -1,0 +1,70 @@
+package {{.Names.Package}}
+
+import (
+	"context"
+	"time"
+
+	"github.com/yaboylino/gonestly/sql"
+)
+
+const defaultLimit = 20
+
+// Service holds the logic for {{.Names.Words}}.
+type Service struct {
+	repo *sql.Repository[{{.Names.Model}}, int64]
+}
+
+// NewService returns the service for {{.Names.Words}}.
+func NewService(repo *sql.Repository[{{.Names.Model}}, int64]) *Service {
+	return &Service{repo: repo}
+}
+
+// List returns a page of {{.Names.Words}}, oldest first.
+func (s *Service) List(ctx context.Context, page, limit int) (Page, error) {
+	page = max(page, 1)
+	if limit < 1 {
+		limit = defaultLimit
+	}
+	query := s.repo.Query()
+	items, err := query.OrderBy({{.Names.Model}}Columns.ID.Asc()).Limit(limit).Offset((page - 1) * limit).All(ctx)
+	if err != nil {
+		return Page{}, err
+	}
+	total, err := query.Count(ctx)
+	if err != nil {
+		return Page{}, err
+	}
+	if items == nil {
+		items = []{{.Names.Model}}{}
+	}
+	return Page{Items: items, Total: total}, nil
+}
+
+// Find returns one {{.Names.ModelWords}}, or sql.ErrNotFound.
+func (s *Service) Find(ctx context.Context, id int64) ({{.Names.Model}}, error) {
+	return s.repo.FindByID(ctx, id)
+}
+
+// Create stores a new {{.Names.ModelWords}}.
+func (s *Service) Create(ctx context.Context, req CreateRequest) ({{.Names.Model}}, error) {
+	item := {{.Names.Model}}{Name: req.Name}
+	err := s.repo.Create(ctx, &item)
+	return item, err
+}
+
+// Update replaces the fields of a {{.Names.ModelWords}}.
+func (s *Service) Update(ctx context.Context, req UpdateRequest) ({{.Names.Model}}, error) {
+	item, err := s.repo.FindByID(ctx, req.ID)
+	if err != nil {
+		return {{.Names.Model}}{}, err
+	}
+	item.Name = req.Name
+	item.UpdatedAt = time.Now().UTC()
+	err = s.repo.Update(ctx, &item)
+	return item, err
+}
+
+// Delete removes a {{.Names.ModelWords}}.
+func (s *Service) Delete(ctx context.Context, id int64) error {
+	return s.repo.Delete(ctx, id)
+}

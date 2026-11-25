@@ -1,0 +1,30 @@
+package health
+
+import (
+	"context"
+
+	"github.com/yaboylino/gonestly"
+)
+
+// Status reports whether the application is running.
+type Status struct {
+	Status string `json:"status" example:"ok"`
+}
+
+// Controller serves the health check.
+type Controller struct{}
+
+// NewController returns the health controller.
+func NewController() *Controller {
+	return &Controller{}
+}
+
+// Routes registers the health check.
+func (c *Controller) Routes(r *gonestly.Router) {
+	gonestly.Get(r, "/health", c.Check, gonestly.Summary("Check that the application is running"))
+}
+
+// Check answers when the application is running.
+func (c *Controller) Check(context.Context, gonestly.Empty) (Status, error) {
+	return Status{Status: "ok"}, nil
+}

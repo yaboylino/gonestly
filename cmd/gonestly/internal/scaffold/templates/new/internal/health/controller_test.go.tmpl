@@ -1,0 +1,20 @@
+package health_test
+
+import (
+	"net/http"
+	"testing"
+
+	"github.com/yaboylino/gonestly/gonestlytest"
+
+	"{{.Module}}/internal/health"
+)
+
+func TestCheck(t *testing.T) {
+	app := gonestlytest.Start(t, health.Module)
+
+	var status health.Status
+	app.Get("/health").ExpectStatus(http.StatusOK).JSON(&status)
+	if status.Status != "ok" {
+		t.Errorf("status = %q, want ok", status.Status)
+	}
+}

@@ -1,0 +1,14 @@
+// Package {{.Names.Package}} manages {{.Names.Words}}.
+package {{.Names.Package}}
+
+import (
+	"github.com/yaboylino/gonestly"
+	"github.com/yaboylino/gonestly/sql"
+)
+
+// Module provides the routes and logic for {{.Names.Words}}.
+var Module = &gonestly.Module{
+	Name:        "{{.Names.Kebab}}",
+	Providers:   gonestly.Providers(sql.NewRepository[{{.Names.Model}}, int64], NewService),
+	Controllers: gonestly.Controllers(NewController),
+}
