@@ -31,6 +31,7 @@ jobs:
       - name: Verify modules
         run: go mod verify
       - name: Test
+        shell: bash
         run: go test -race -shuffle=on -coverprofile=coverage.out ./...
       - name: Coverage summary
         if: matrix.os == 'ubuntu-latest' && matrix.go == '1.27.x'
