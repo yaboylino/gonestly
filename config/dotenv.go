@@ -11,6 +11,9 @@ import (
 	"strings"
 )
 
+// maxLineLength allows long values such as certificates and keys on a single line.
+const maxLineLength = 1 << 20
+
 // readFiles reads the dotenv files in order, later files overriding earlier ones.
 func readFiles(paths []string) (map[string]string, error) {
 	vars := map[string]string{}
@@ -37,8 +40,13 @@ func readFiles(paths []string) (map[string]string, error) {
 func parseDotenv(r io.Reader, name string) (map[string]string, error) {
 	vars := map[string]string{}
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLineLength)
 	for lineNo := 1; scanner.Scan(); lineNo++ {
-		line := strings.TrimSpace(scanner.Text())
+		line := scanner.Text()
+		if lineNo == 1 {
+			line = strings.TrimPrefix(line, "\uFEFF")
+		}
+		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}

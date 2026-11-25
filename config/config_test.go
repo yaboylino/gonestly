@@ -283,7 +283,23 @@ func TestModule(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = app.Start(t.Context())
-	if err == nil || !strings.Contains(err.Error(), "config: PORT is required") {
+	if err == nil || !strings.Contains(err.Error(), `constructing config.Module.func1 in module "config": config: PORT is required`) {
 		t.Errorf("Start = %v, want a configuration error", err)
+	}
+}
+
+func TestDotenvByteOrderMarkAndLongLines(t *testing.T) {
+	type cfg struct {
+		Name string
+		Cert string
+	}
+	long := strings.Repeat("x", 200*1024)
+	path := writeFile(t, "\uFEFFNAME=bom\nCERT="+long+"\n")
+	got, err := config.Load[cfg](config.Options{Files: []string{path}, LookupEnv: env(nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "bom" || got.Cert != long {
+		t.Errorf("Name = %q, len(Cert) = %d", got.Name, len(got.Cert))
 	}
 }
