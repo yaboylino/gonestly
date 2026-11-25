@@ -18,6 +18,8 @@ linters:
     - unparam
     - usestdlibvars
   settings:
+    exhaustive:
+      default-signifies-exhaustive: true
     misspell:
       locale: US
     nolintlint:
