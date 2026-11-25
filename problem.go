@@ -38,12 +38,7 @@ func writeError(w http.ResponseWriter, r *http.Request, err error, logger *slog.
 		level = slog.LevelDebug
 	}
 	if status >= 500 || httpErr.Err != nil {
-		logger.Log(r.Context(), level, "request failed",
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.Int("status", status),
-			slog.Any("error", err),
-		)
+		logger.Log(r.Context(), level, "request failed", append(requestAttrs(w, r), slog.Int("status", status), slog.Any("error", err))...)
 	}
 
 	detail := httpErr.Detail

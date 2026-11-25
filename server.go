@@ -141,7 +141,7 @@ func (s *server) recovered(next http.Handler) http.Handler {
 			if v == http.ErrAbortHandler { //nolint:errorlint // net/http compares the sentinel directly
 				panic(v)
 			}
-			s.logger.ErrorContext(r.Context(), "handler panicked", slog.Any("panic", v), slog.String("stack", string(debug.Stack())))
+			s.logger.ErrorContext(r.Context(), "handler panicked", append(requestAttrs(w, r), slog.Any("panic", v), slog.String("stack", string(debug.Stack())))...)
 			writeError(w, r, fmt.Errorf("panic: %v", v), s.logger)
 		}()
 		next.ServeHTTP(w, r)
