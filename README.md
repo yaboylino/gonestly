@@ -67,10 +67,11 @@ gonestly generate resource products
 gonestly dev
 ```
 
-`gonestly dev` watches your project and rebuilds on every save. When the code compiles, the running
-application is restarted gracefully. When it does not, the compiler errors are shown with file and
-line, and the last working version keeps running so you are never left without a server. Add
-`--test` to also run the tests of the packages you changed.
+`gonestly dev` watches your project and checks it on every save: it builds the code and runs
+`go vet`, and with `--test` also the tests of the packages you changed. When everything passes,
+the application is restarted gracefully. When something fails, the application is stopped and
+every problem is listed with its file, line and message, so a broken change never looks like it
+works. The application starts again as soon as the problems are fixed.
 
 ## Roadmap
 
