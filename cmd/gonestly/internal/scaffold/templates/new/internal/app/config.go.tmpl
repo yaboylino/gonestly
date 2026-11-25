@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/yaboylino/gonestly"
 )
@@ -16,9 +17,12 @@ type Config struct {
 	Docs bool `default:"true"`
 }
 
-// NewServerConfig listens on the configured port.
-func NewServerConfig(cfg Config) gonestly.ServerConfig {
-	return gonestly.ServerConfig{Addr: fmt.Sprintf(":%d", cfg.Port)}
+// NewServerConfig listens on the configured port, and gives every request an ID and a log line.
+func NewServerConfig(cfg Config, logger *slog.Logger) gonestly.ServerConfig {
+	return gonestly.ServerConfig{
+		Addr:       fmt.Sprintf(":%d", cfg.Port),
+		Middleware: []gonestly.Middleware{gonestly.RequestID(), gonestly.AccessLog(logger)},
+	}
 }
 
 // NewOpenAPIConfig describes the API in its documentation.

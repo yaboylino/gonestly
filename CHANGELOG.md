@@ -46,6 +46,12 @@ All notable changes to this project are documented in this file. The format is b
   migrations, and `routes` and `openapi` inspect the application.
 - `InspectEnv`, which makes `App.Run` print the routes or the OpenAPI document instead of
   serving, and `InspectOutputEnv` to write them to a file.
+- `RequestID` and `AccessLog`, middleware that gives every request an ID and a log line; the
+  ID is also added to the error logs of the application.
+- `sql.ErrConflict`, which answers 409 when a unique or primary key value already exists.
+- `sql.ReadOnly` and `sql.Isolation`, options for `DB.Transaction`.
+- Migrations that run outside a transaction with the comment `-- gonestly:no-transaction`,
+  for statements such as `CREATE INDEX CONCURRENTLY`.
 - Pointer fields such as `*int` for path, query, header and configuration values, which stay
   nil when the value is absent.
 - Quoted values that span several lines in dotenv files.
