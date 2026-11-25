@@ -2,6 +2,7 @@ package gonestly
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -66,6 +67,7 @@ func (c ServerConfig) withDefaults() ServerConfig {
 
 type server struct {
 	config    ServerConfig
+	openAPI   []byte
 	logger    *slog.Logger
 	validator StructValidator
 	routes    []*route
@@ -77,11 +79,13 @@ type server struct {
 
 type controllerInstance struct {
 	name       string
+	module     string
 	controller Controller
 }
 
 // newServer collects the routes of every controller and reports all route problems at once.
-func newServer(controllers []controllerInstance, config ServerConfig, validator StructValidator, logger *slog.Logger) (*server, error) {
+func newServer(controllers []controllerInstance, config ServerConfig, openAPI OpenAPIConfig, validator StructValidator, logger *slog.Logger) (*server, error) {
+	openAPI = openAPI.withDefaults()
 	s := &server{config: config.withDefaults(), logger: logger, validator: validator, mux: http.NewServeMux()}
 
 	var problems []error
@@ -95,8 +99,19 @@ func newServer(controllers []controllerInstance, config ServerConfig, validator 
 			problems = append(problems, fmt.Errorf("%w: %s: %s", ErrInvalidRoute, rt, p))
 		}
 	}
+	if !openAPI.Disabled {
+		problems = append(problems, openAPIRouteConflict(s.routes, openAPI)...)
+	}
 	if len(problems) > 0 {
 		return nil, &BuildError{Problems: problems}
+	}
+	document, err := json.Marshal(buildOpenAPI(s.routes, openAPI, s.config.Guards))
+	if err != nil {
+		return nil, fmt.Errorf("gonestly: encoding the OpenAPI document: %w", err)
+	}
+	s.openAPI = document
+	if !openAPI.Disabled {
+		s.serveOpenAPI(openAPI)
 	}
 	for _, rt := range s.routes {
 		if err := s.register(rt); err != nil {
@@ -115,13 +130,25 @@ func newServer(controllers []controllerInstance, config ServerConfig, validator 
 	return s, nil
 }
 
+func (s *server) serveOpenAPI(config OpenAPIConfig) {
+	ui := renderSwaggerUI(config.Title, relativeURL(config.DocsPath, config.JSONPath))
+	s.mux.HandleFunc("GET "+config.JSONPath, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_, _ = w.Write(s.openAPI)
+	})
+	s.mux.HandleFunc("GET "+config.DocsPath, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(ui)
+	})
+}
+
 func (s *server) collectRoutes(c controllerInstance) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("%w: the Routes method of %s panicked: %v", ErrInvalidRoute, c.name, r)
 		}
 	}()
-	c.controller.Routes(&Router{controller: c.name, routes: &s.routes})
+	c.controller.Routes(&Router{controller: c.name, module: c.module, routes: &s.routes})
 	return nil
 }
 

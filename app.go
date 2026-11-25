@@ -141,6 +141,17 @@ func (a *App) Addr() net.Addr {
 	return a.server.listener.Addr()
 }
 
+// OpenAPI returns the OpenAPI 3.1 document of a started application as JSON, or nil if it has
+// no controllers. It is built even when OpenAPIConfig.Disabled stops serving it.
+func (a *App) OpenAPI() []byte {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.server == nil {
+		return nil
+	}
+	return a.server.openAPI
+}
+
 // Routes returns the routes of a started application, in registration order.
 func (a *App) Routes() []RouteInfo {
 	a.mu.Lock()
@@ -158,12 +169,13 @@ func (a *App) startServer(ctx context.Context) error {
 	controllers := make([]controllerInstance, 0, len(a.container.controllers))
 	for _, pn := range a.container.controllers {
 		c, _ := pn.instance.Interface().(Controller)
-		controllers = append(controllers, controllerInstance{name: pn.String(), controller: c})
+		controllers = append(controllers, controllerInstance{name: pn.String(), module: pn.module.module.Name, controller: c})
 	}
 	config, _ := a.rootInstance(reflect.TypeFor[ServerConfig]()).(ServerConfig)
 	validator, _ := a.rootInstance(reflect.TypeFor[StructValidator]()).(StructValidator)
+	openAPI, _ := a.rootInstance(reflect.TypeFor[OpenAPIConfig]()).(OpenAPIConfig)
 
-	s, err := newServer(controllers, config, validator, a.logger)
+	s, err := newServer(controllers, config, openAPI, validator, a.logger)
 	if err != nil {
 		return err
 	}

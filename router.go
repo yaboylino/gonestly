@@ -22,6 +22,7 @@ type Middleware = func(http.Handler) http.Handler
 // the routes registered after them; Group scopes them to a part of the routes.
 type Router struct {
 	controller   string
+	module       string
 	prefix       string
 	guards       []Guard
 	interceptors []Interceptor
@@ -40,6 +41,11 @@ type route struct {
 	method       string
 	path         string
 	controller   string
+	module       string
+	reqType      reflect.Type
+	resType      reflect.Type
+	handlerName  string
+	docs         routeDocs
 	binder       *binder
 	call         func(ctx context.Context, req reflect.Value) (any, error)
 	raw          http.Handler
@@ -80,6 +86,7 @@ func (r *Router) Use(middleware ...Middleware) *Router {
 func (r *Router) Group(prefix string, fn func(r *Router)) {
 	fn(&Router{
 		controller:   r.controller,
+		module:       r.module,
 		prefix:       joinPath(r.prefix, prefix),
 		guards:       slices.Clip(r.guards),
 		interceptors: slices.Clip(r.interceptors),
@@ -95,6 +102,43 @@ type routeOptions struct {
 	status       int
 	guards       []Guard
 	interceptors []Interceptor
+	docs         routeDocs
+}
+
+// routeDocs describes a route in the OpenAPI document.
+type routeDocs struct {
+	summary     string
+	description string
+	tags        []string
+	operationID string
+	deprecated  bool
+}
+
+// Summary sets the one line summary of a route in the OpenAPI document. It defaults to the
+// handler's name in words, such as "Find one" for FindOne.
+func Summary(summary string) RouteOption {
+	return func(o *routeOptions) { o.docs.summary = summary }
+}
+
+// Description sets the longer description of a route in the OpenAPI document; Markdown works.
+func Description(description string) RouteOption {
+	return func(o *routeOptions) { o.docs.description = description }
+}
+
+// Tags groups a route in the OpenAPI document. It defaults to the name of its module.
+func Tags(tags ...string) RouteOption {
+	return func(o *routeOptions) { o.docs.tags = append(o.docs.tags, tags...) }
+}
+
+// OperationID sets the operation ID in the OpenAPI document, which client generators use as
+// the method name. It defaults to the handler's name.
+func OperationID(id string) RouteOption {
+	return func(o *routeOptions) { o.docs.operationID = id }
+}
+
+// Deprecated marks a route as deprecated in the OpenAPI document.
+func Deprecated() RouteOption {
+	return func(o *routeOptions) { o.docs.deprecated = true }
 }
 
 // Status sets the status code of a successful response. It defaults to 201 for POST, 204 for
@@ -152,13 +196,16 @@ func addRoute[Req, Res any](r *Router, method, path string, h Handler[Req, Res],
 	rt := r.newRoute(method, path, opts)
 	b, problems := newBinder(reflect.TypeFor[Req]())
 	rt.binder = b
-	rt.emptyResult = reflect.TypeFor[Res]() == emptyType
+	rt.reqType = reflect.TypeFor[Req]()
+	rt.resType = reflect.TypeFor[Res]()
+	rt.emptyResult = rt.resType == emptyType
 	rt.problems = append(rt.problems, problems...)
 	rt.problems = append(rt.problems, b.pathProblems(rt.path)...)
 	if h == nil {
 		rt.problems = append(rt.problems, "the handler is nil")
 		return
 	}
+	rt.handlerName = funcName(reflect.ValueOf(h))
 	rt.call = func(ctx context.Context, req reflect.Value) (any, error) {
 		return h(ctx, req.Interface().(Req)) //nolint:forcetypeassert // the binder creates a Req
 	}
@@ -173,7 +220,9 @@ func (r *Router) newRoute(method, path string, opts []RouteOption) *route {
 		method:       strings.ToUpper(method),
 		path:         joinPath(r.prefix, path),
 		controller:   r.controller,
+		module:       r.module,
 		status:       o.status,
+		docs:         o.docs,
 		guards:       append(slices.Clip(r.guards), o.guards...),
 		interceptors: append(slices.Clip(r.interceptors), o.interceptors...),
 		middleware:   slices.Clip(r.middleware),
