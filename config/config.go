@@ -19,20 +19,14 @@
 package config
 
 import (
-	"encoding"
 	"errors"
 	"fmt"
 	"os"
 	"reflect"
-	"strconv"
 	"strings"
-	"time"
 	"unicode"
-)
 
-var (
-	textUnmarshalerType = reflect.TypeFor[encoding.TextUnmarshaler]()
-	durationType        = reflect.TypeFor[time.Duration]()
+	"github.com/yaboylino/gonestly/internal/convert"
 )
 
 // Options controls where Load reads configuration from.
@@ -122,7 +116,7 @@ func (l *loader) loadStruct(v reflect.Value, prefix string) {
 		if name == "" {
 			key = prefix + snakeCase(field.Name)
 		}
-		if !supported(field.Type) {
+		if !convert.Supported(field.Type) {
 			l.problem("%s: field %s has unsupported type %s", key, field.Name, field.Type)
 			continue
 		}
@@ -137,7 +131,7 @@ func (l *loader) loadStruct(v reflect.Value, prefix string) {
 			}
 			continue
 		}
-		if err := setValue(v.Field(i), raw); err != nil {
+		if err := convert.Set(v.Field(i), raw); err != nil {
 			l.problem("%s: %v", key, err)
 		}
 	}
@@ -153,94 +147,8 @@ func parseTag(tag string) (name string, required bool) {
 	return strings.TrimSpace(name), required
 }
 
-func isTextUnmarshaler(t reflect.Type) bool {
-	return reflect.PointerTo(t).Implements(textUnmarshalerType)
-}
-
 func isNestedStruct(t reflect.Type) bool {
-	return t.Kind() == reflect.Struct && !isTextUnmarshaler(t)
-}
-
-func supported(t reflect.Type) bool {
-	if isTextUnmarshaler(t) || t == durationType {
-		return true
-	}
-	switch t.Kind() {
-	case reflect.String, reflect.Bool,
-		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64:
-		return true
-	case reflect.Slice:
-		return t.Elem().Kind() != reflect.Slice && supported(t.Elem())
-	default:
-		return false
-	}
-}
-
-func setValue(v reflect.Value, raw string) error {
-	t := v.Type()
-	if isTextUnmarshaler(t) {
-		return v.Addr().Interface().(encoding.TextUnmarshaler).UnmarshalText([]byte(raw)) //nolint:forcetypeassert // checked by isTextUnmarshaler
-	}
-	if t == durationType {
-		d, err := time.ParseDuration(raw)
-		if err != nil {
-			return fmt.Errorf("%q is not a valid duration, such as 30s or 5m", raw)
-		}
-		v.SetInt(int64(d))
-		return nil
-	}
-
-	switch t.Kind() {
-	case reflect.String:
-		v.SetString(raw)
-	case reflect.Bool:
-		b, err := strconv.ParseBool(raw)
-		if err != nil {
-			return fmt.Errorf("%q is not a valid boolean, such as true or false", raw)
-		}
-		v.SetBool(b)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		n, err := strconv.ParseInt(raw, 10, t.Bits())
-		if err != nil {
-			return fmt.Errorf("%q is not a valid %s", raw, t)
-		}
-		v.SetInt(n)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		n, err := strconv.ParseUint(raw, 10, t.Bits())
-		if err != nil {
-			return fmt.Errorf("%q is not a valid %s", raw, t)
-		}
-		v.SetUint(n)
-	case reflect.Float32, reflect.Float64:
-		f, err := strconv.ParseFloat(raw, t.Bits())
-		if err != nil {
-			return fmt.Errorf("%q is not a valid %s", raw, t)
-		}
-		v.SetFloat(f)
-	case reflect.Slice:
-		return setSlice(v, raw)
-	default:
-		return fmt.Errorf("unsupported type %s", t)
-	}
-	return nil
-}
-
-func setSlice(v reflect.Value, raw string) error {
-	if strings.TrimSpace(raw) == "" {
-		v.Set(reflect.MakeSlice(v.Type(), 0, 0))
-		return nil
-	}
-	parts := strings.Split(raw, ",")
-	slice := reflect.MakeSlice(v.Type(), len(parts), len(parts))
-	for i, part := range parts {
-		if err := setValue(slice.Index(i), strings.TrimSpace(part)); err != nil {
-			return fmt.Errorf("item %d: %w", i+1, err)
-		}
-	}
-	v.Set(slice)
-	return nil
+	return t.Kind() == reflect.Struct && !convert.IsTextUnmarshaler(t)
 }
 
 // snakeCase converts a Go field name to an environment variable name, e.g. APIKey to API_KEY.
