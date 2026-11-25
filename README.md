@@ -75,15 +75,24 @@ var AppModule = &gonestly.Module{
 }
 ```
 
-Querying with the typed builder:
+Querying with the SQL layer, from a generic repository to typed queries and raw SQL:
 
 ```go
-users, err := sql.From[User](db).
-	Where(user.Email.Like("%@example.com"), user.Active.Eq(true)).
-	OrderBy(user.CreatedAt.Desc()).
+users, err := sql.NewRepository[User, int64](db)
+user, err := users.FindByID(ctx, 42) // sql.ErrNotFound answers 404 from a handler
+
+var email, createdAt = sql.Col[string]("email"), sql.Col[time.Time]("created_at")
+recent, err := sql.From[User](db).
+	Where(email.Like("%@example.com")).
+	OrderBy(createdAt.Desc()).
 	Limit(20).
 	All(ctx)
+
+total, err := sql.QueryOne[int64](ctx, db, "SELECT COUNT(*) FROM users WHERE team_id IN (?)", teamIDs)
 ```
+
+Transactions travel through the context, so repositories join them automatically, and
+migrations are plain SQL files applied when the application starts.
 
 Developing with the CLI:
 
@@ -104,10 +113,11 @@ works. The application starts again as soon as the problems are fixed.
 
 - [x] Core: modules, dependency injection, lifecycle hooks, configuration and logging
 - [x] HTTP: router, typed handlers, binding, validation, guards, interceptors and error handling
-- [ ] SQL: repositories, typed query builder, transactions and migrations for PostgreSQL, SQLite and MySQL
+- [x] SQL: repositories, typed query builder, transactions and migrations for PostgreSQL and SQLite
+- [ ] OpenAPI: a document and Swagger UI generated from every route
 - [ ] CLI: `new`, `generate`, `dev` with live rebuild and restart, `migrate` and `routes`
 - [x] Documentation site in English and Dutch
-- [ ] OpenAPI generation and examples
+- [ ] MySQL support and examples
 - [ ] First release: `v0.1.0`
 
 ## Contributing

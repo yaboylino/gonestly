@@ -29,3 +29,8 @@ All notable changes to this project are documented in this file. The format is b
 - An HTTP server with secure timeouts and a body size limit, configured with `ServerConfig` and
   shut down gracefully with the application.
 - The `gonestlytest` package to test applications without opening a port.
+- The `sql` module: a generic `Repository`, a typed query builder with `From` and `Col`, and
+  `Query` and `QueryOne` that scan raw SQL into structs, for PostgreSQL and SQLite.
+- Transactions through the context, with savepoints for nested transactions.
+- Migrations from SQL files with checksums, a lock on PostgreSQL and one transaction each.
+- `sql.ErrNotFound`, which answers 404 when a handler returns it.
