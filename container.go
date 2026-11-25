@@ -97,10 +97,15 @@ func buildContainer(root, core *Module, overrides []Provider) (*container, error
 	}
 	b.visitModule(core, nil)
 	rootNode := b.visitModule(root, nil)
+	var unused []string
 	for _, o := range b.overrides {
 		if !o.used {
-			b.problem("%w: override %s replaces no provider of %s", ErrInvalidModule, o.provider.name, o.provider.typ)
+			unused = append(unused, fmt.Sprintf("override %s replaces no provider of %s", o.provider.name, o.provider.typ))
 		}
+	}
+	slices.Sort(unused)
+	for _, u := range unused {
+		b.problem("%w: %s", ErrInvalidModule, u)
 	}
 	if err := b.failed(); err != nil {
 		return nil, err
@@ -129,6 +134,8 @@ func (b *builder) registerOverrides(overrides []Provider) {
 		switch {
 		case p.err != nil:
 			b.problem("%w: override: %w", ErrInvalidModule, p.err)
+		case p.typ == nil:
+			b.problem("%w: empty override; create it with Provide, As or Value", ErrInvalidModule)
 		case b.overrides[p.typ] != nil:
 			b.problem("%w: %s is overridden twice", ErrInvalidModule, p.typ)
 		default:
@@ -225,12 +232,15 @@ func (b *builder) resolveExports() {
 					b.addExport(n, imp.exports[typ])
 				}
 			case e.fnPtr != 0 || e.typ != nil:
-				pn := n.ownProvider(e)
-				if pn == nil {
+				matches := n.ownProviders(e)
+				switch len(matches) {
+				case 0:
 					b.problem("%w: module %q exports %s, which is not one of its providers", ErrInvalidModule, n.module.Name, e.label)
-					continue
+				case 1:
+					b.addExport(n, matches[0])
+				default:
+					b.problem("%w: module %q exports %s, which matches %d providers; export it with gonestly.Type instead", ErrInvalidModule, n.module.Name, e.label, len(matches))
 				}
-				b.addExport(n, pn)
 			default:
 				b.problem("%w: module %q has an empty export; create it with Exports or Type", ErrInvalidModule, n.module.Name)
 			}
@@ -259,13 +269,15 @@ func (n *moduleNode) importOf(m *Module) *moduleNode {
 	return nil
 }
 
-func (n *moduleNode) ownProvider(e Export) *providerNode {
+// ownProviders finds the providers an export refers to; one constructor can back several, e.g. via As.
+func (n *moduleNode) ownProviders(e Export) []*providerNode {
+	var matches []*providerNode
 	for _, pn := range n.providers {
 		if (e.fnPtr != 0 && pn.declaredPtr == e.fnPtr) || (e.typ != nil && pn.provider.typ == e.typ) {
-			return pn
+			matches = append(matches, pn)
 		}
 	}
-	return nil
+	return matches
 }
 
 // resolveVisibility computes what each module can inject: global exports, then the exports of
@@ -335,9 +347,12 @@ func (b *builder) missingDependency(pn *providerNode, param reflect.Type) error 
 			if candidate.provider.typ != param {
 				continue
 			}
-			if other.exports[param] == candidate {
+			switch {
+			case other.exports[param] == candidate:
 				hints = append(hints, fmt.Sprintf("module %q exports it: add that module to the Imports of %q", other.module.Name, n.module.Name))
-			} else {
+			case n.importOf(other.module) != nil:
+				hints = append(hints, fmt.Sprintf("module %q provides it but does not export it: add it to the Exports of %q", other.module.Name, other.module.Name))
+			default:
 				hints = append(hints, fmt.Sprintf("module %q provides it but does not export it: add it to the Exports of %q and import that module", other.module.Name, other.module.Name))
 			}
 		}

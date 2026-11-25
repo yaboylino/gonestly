@@ -572,3 +572,109 @@ func TestRunReturnsStartError(t *testing.T) {
 	}
 	assertContains(t, app.Run(t.Context()), "start failed")
 }
+
+type blockingStopper struct{ release chan struct{} }
+
+func (b *blockingStopper) OnStop(context.Context) error {
+	<-b.release
+	return nil
+}
+
+func TestRunEnforcesShutdownTimeout(t *testing.T) {
+	blocker := &blockingStopper{release: make(chan struct{})}
+	t.Cleanup(func() { close(blocker.release) })
+	root := &gonestly.Module{Name: "app", Providers: gonestly.Providers(gonestly.Value(blocker))}
+	app, err := gonestly.New(root, quietLogger(), gonestly.WithShutdownTimeout(50*time.Millisecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer cancel()
+
+	begin := time.Now()
+	err = app.Run(ctx)
+	assertContains(t, err, "the application did not stop within 50ms")
+	if elapsed := time.Since(begin); elapsed > time.Second {
+		t.Errorf("Run took %s, want it to give up after the shutdown timeout", elapsed)
+	}
+}
+
+type panickingHooks struct{ on string }
+
+func (p *panickingHooks) OnStart(context.Context) error {
+	if p.on == "start" {
+		panic("start exploded")
+	}
+	return nil
+}
+
+func (p *panickingHooks) OnStop(context.Context) error {
+	if p.on == "stop" {
+		panic("stop exploded")
+	}
+	return nil
+}
+
+func TestHookPanicsBecomeErrors(t *testing.T) {
+	var events []string
+	newFirst := func() *first { return &first{&recorder{&events, "first", ""}} }
+
+	root := &gonestly.Module{Name: "app", Providers: gonestly.Providers(newFirst, func(*first) *panickingHooks { return &panickingHooks{on: "start"} })}
+	app, err := gonestly.New(root, quietLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, app.Start(t.Context()), "starting", "panic: start exploded")
+	if got := strings.Join(events, ","); got != "start first,stop first" {
+		t.Errorf("events = %s", got)
+	}
+
+	root = &gonestly.Module{Name: "app", Providers: gonestly.Providers(gonestly.Value(&panickingHooks{on: "stop"}))}
+	app = mustStart(t, root)
+	assertContains(t, app.Stop(t.Context()), "stopping", "panic: stop exploded")
+}
+
+func TestConstructorReturningNil(t *testing.T) {
+	root := &gonestly.Module{Name: "app", Providers: gonestly.Providers(func() *database { return nil })}
+	app, err := gonestly.New(root, quietLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, app.Start(t.Context()), "constructing", "returned a nil *gonestly_test.database")
+}
+
+func TestExportProviders(t *testing.T) {
+	store := gonestly.As[userStore](newMemoryStore)
+	db := gonestly.Value(&database{dsn: "value"})
+	lib := &gonestly.Module{Name: "lib", Providers: []gonestly.Provider{store, db}, Exports: gonestly.Exports(store, db)}
+	root := &gonestly.Module{Name: "app", Imports: gonestly.Imports(lib), Providers: gonestly.Providers(newStoreUser, newRepository)}
+
+	app := mustStart(t, root)
+	if mustResolve[*repository](t, app).db.dsn != "value" || mustResolve[*storeUser](t, app).store == nil {
+		t.Error("the exported providers were not injected")
+	}
+
+	err := buildError(t, &gonestly.Module{Name: "app", Exports: gonestly.Exports(gonestly.Provide(42))})
+	assertContains(t, err, "int is not a constructor function")
+}
+
+func TestAmbiguousConstructorExport(t *testing.T) {
+	root := &gonestly.Module{
+		Name:      "app",
+		Providers: gonestly.Providers(newMemoryStore, gonestly.As[userStore](newMemoryStore)),
+		Exports:   gonestly.Exports(newMemoryStore),
+	}
+	assertContains(t, buildError(t, root), "exports gonestly_test.newMemoryStore, which matches 2 providers; export it with gonestly.Type instead")
+}
+
+func TestMissingDependencyNotImported(t *testing.T) {
+	db := &gonestly.Module{Name: "database", Providers: gonestly.Providers(newDatabase)}
+	other := &gonestly.Module{Name: "other", Imports: gonestly.Imports(db)}
+	root := &gonestly.Module{Name: "app", Imports: gonestly.Imports(other), Providers: gonestly.Providers(newRepository)}
+	assertContains(t, buildError(t, root), `add it to the Exports of "database" and import that module`)
+}
+
+func TestEmptyOverride(t *testing.T) {
+	root := &gonestly.Module{Name: "app"}
+	assertContains(t, buildError(t, root, gonestly.Override(gonestly.Provider{})), "empty override")
+}

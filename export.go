@@ -15,8 +15,8 @@ type Export struct {
 	err    error
 }
 
-// Exports turns its arguments into exports. Each argument is the constructor of one of the
-// module's providers, an imported *Module whose exports are passed on, or an Export from Type.
+// Exports turns its arguments into exports. Each argument is the constructor or Provider of one of
+// the module's providers, an imported *Module whose exports are passed on, or an Export from Type.
 func Exports(items ...any) []Export {
 	exports := make([]Export, 0, len(items))
 	for _, item := range items {
@@ -35,6 +35,14 @@ func newExport(item any) Export {
 	switch v := item.(type) {
 	case Export:
 		return v
+	case Provider:
+		if v.err != nil {
+			return Export{err: v.err}
+		}
+		if v.fn.IsValid() {
+			return Export{fnPtr: v.fnPtr, label: v.name}
+		}
+		return Export{typ: v.typ, label: v.name}
 	case *Module:
 		if v == nil {
 			return Export{err: errors.New("cannot export a nil module")}

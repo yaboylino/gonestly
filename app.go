@@ -77,7 +77,7 @@ func (a *App) Start(ctx context.Context) error {
 			return a.rollback(ctx, fmt.Errorf("gonestly: constructing %s: %w", pn, err))
 		}
 		if s, ok := pn.instance.Interface().(Starter); ok {
-			if err := s.OnStart(ctx); err != nil {
+			if err := callHook(func() error { return s.OnStart(ctx) }); err != nil {
 				return a.rollback(ctx, fmt.Errorf("gonestly: starting %s: %w", pn, err))
 			}
 		}
@@ -118,10 +118,19 @@ func (a *App) Run(ctx context.Context) error {
 	case <-ctx.Done():
 	case <-a.done:
 	}
+	// Restore the default signal handling, so a second interrupt terminates the process at once.
+	stop()
 
 	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.shutdownTimeout)
 	defer cancel()
-	stopErr := a.Stop(stopCtx)
+	stopped := make(chan error, 1)
+	go func() { stopped <- a.Stop(stopCtx) }()
+	var stopErr error
+	select {
+	case stopErr = <-stopped:
+	case <-stopCtx.Done():
+		stopErr = fmt.Errorf("gonestly: the application did not stop within %s", a.shutdownTimeout)
+	}
 
 	select {
 	case <-a.done:
@@ -156,6 +165,16 @@ func Resolve[T any](a *App) (T, error) {
 	return v, nil
 }
 
+// callHook runs a lifecycle hook and turns a panic into an error.
+func callHook(hook func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
+	return hook()
+}
+
 func (a *App) rollback(ctx context.Context, cause error) error {
 	return errors.Join(cause, a.stopLive(ctx))
 }
@@ -167,7 +186,7 @@ func (a *App) stopLive(ctx context.Context) error {
 		if !ok {
 			continue
 		}
-		if err := s.OnStop(ctx); err != nil {
+		if err := callHook(func() error { return s.OnStop(ctx) }); err != nil {
 			errs = append(errs, fmt.Errorf("gonestly: stopping %s: %w", pn, err))
 		}
 	}

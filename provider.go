@@ -111,6 +111,9 @@ func (p *Provider) call(args []reflect.Value) (v reflect.Value, err error) {
 		return reflect.Value{}, out[1].Interface().(error) //nolint:forcetypeassert // the signature guarantees an error
 	}
 	v = out[0]
+	if isNil(v) {
+		return reflect.Value{}, fmt.Errorf("returned a nil %s", v.Type())
+	}
 	if v.Type() != p.typ {
 		converted := reflect.New(p.typ).Elem()
 		converted.Set(v)
@@ -129,7 +132,7 @@ func funcName(fn reflect.Value) string {
 	if i := strings.LastIndexByte(name, '/'); i >= 0 {
 		name = name[i+1:]
 	}
-	return name
+	return strings.ReplaceAll(name, "[...]", "")
 }
 
 func isNil(v reflect.Value) bool {
