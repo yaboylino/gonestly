@@ -33,8 +33,8 @@ make check
 ## Guidelines
 
 - **Keep the core dependency free.** The root module only uses the standard library. Integrations
-  with third party packages live in their own module, such as `validator/` and `sql/`, which
-  `make` checks along with the root module.
+  with third party packages live in their own module, such as `validator/`, `sql/` and the CLI
+  in `cmd/gonestly/`, which `make` checks along with the root module.
 - **Fail at startup, not at runtime.** Configuration and wiring errors should surface when the
   application boots, with a message that says what is wrong and how to fix it.
 - **Test what you change.** New behavior comes with tests; bug fixes come with a test that fails
@@ -58,5 +58,6 @@ Use `feat!:` or a `BREAKING CHANGE:` footer for breaking changes.
 ## Releasing
 
 The root module is tagged as `vX.Y.Z` and each nested module as `<dir>/vX.Y.Z`, such as
-`validator/v0.1.0`. Before tagging a nested module, replace its `replace` directive with a
-`require` of the released root version.
+`validator/v0.1.0`. Before tagging a nested module, replace its `replace` directives with a
+`require` of the released versions: `go install` refuses a module whose go.mod still contains
+`replace` directives, so the CLI cannot be installed until then.
