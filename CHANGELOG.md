@@ -9,7 +9,8 @@ All notable changes to this project are documented in this file. The format is b
 ### Added
 
 - Modules with imports, exports and global modules.
-- Dependency injection through constructors, with `Provide`, `As` for interfaces and `Value`.
+- Dependency injection through constructors, with `Provide`, `As` for interfaces, `Value` for
+  existing values and `Alias` to share one instance under two types.
 - Validation of the whole module graph when the application is built, reporting every missing
   dependency, cycle and declaration error at once with a hint on how to fix it.
 - Application lifecycle with `Starter` and `Stopper` hooks, graceful shutdown on interrupt and

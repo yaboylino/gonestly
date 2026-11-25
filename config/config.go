@@ -12,6 +12,8 @@
 //		Internal    string        `env:"-"` // never read
 //	}
 //
+// A variable that is set but empty is used as is: it does not fall back to the default.
+//
 // Supported field types are strings, booleans, integers, floats, time.Duration, slices of those,
 // nested structs and any type implementing encoding.TextUnmarshaler.
 package config

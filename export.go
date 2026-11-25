@@ -39,7 +39,7 @@ func newExport(item any) Export {
 		if v.err != nil {
 			return Export{err: v.err}
 		}
-		if v.fn.IsValid() {
+		if v.fnPtr != 0 {
 			return Export{fnPtr: v.fnPtr, label: v.name}
 		}
 		return Export{typ: v.typ, label: v.name}

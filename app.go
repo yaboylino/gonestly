@@ -76,7 +76,7 @@ func (a *App) Start(ctx context.Context) error {
 		if err := pn.build(ctx); err != nil {
 			return a.rollback(ctx, fmt.Errorf("gonestly: constructing %s: %w", pn, err))
 		}
-		if s, ok := pn.instance.Interface().(Starter); ok {
+		if s, ok := pn.instance.Interface().(Starter); ok && !pn.provider.alias {
 			if err := callHook(func() error { return s.OnStart(ctx) }); err != nil {
 				return a.rollback(ctx, fmt.Errorf("gonestly: starting %s: %w", pn, err))
 			}
@@ -183,7 +183,7 @@ func (a *App) stopLive(ctx context.Context) error {
 	var errs []error
 	for _, pn := range slices.Backward(a.live) {
 		s, ok := pn.instance.Interface().(Stopper)
-		if !ok {
+		if !ok || pn.provider.alias {
 			continue
 		}
 		if err := callHook(func() error { return s.OnStop(ctx) }); err != nil {

@@ -22,6 +22,7 @@ type Provider struct {
 	returnsErr bool
 	value      reflect.Value
 	name       string
+	alias      bool
 	err        error
 }
 
@@ -36,12 +37,26 @@ func As[T any](constructor any) Provider {
 	return newConstructorProvider(constructor, reflect.TypeFor[T]())
 }
 
-// Value provides an existing value as T.
+// Value provides an existing value as T. Its OnStart and OnStop hooks run like any other provider's.
 func Value[T any](v T) Provider {
 	typ := reflect.TypeFor[T]()
 	p := Provider{typ: typ, value: reflect.ValueOf(&v).Elem(), name: "value " + typ.String()}
 	if isNil(p.value) {
 		p.err = fmt.Errorf("value %s is nil", typ)
+	}
+	return p
+}
+
+// Alias provides the instance of Existing as T as well, so both types share one instance.
+// Lifecycle hooks run once, for Existing.
+func Alias[T, Existing any]() Provider {
+	typ, existing := reflect.TypeFor[T](), reflect.TypeFor[Existing]()
+	p := newConstructorProvider(func(e Existing) T { return any(e).(T) }, nil) //nolint:forcetypeassert // checked below
+	p.fnPtr = 0
+	p.alias = true
+	p.name = fmt.Sprintf("alias of %s as %s", existing, typ)
+	if !existing.AssignableTo(typ) {
+		p.err = fmt.Errorf("%s cannot be used as %s", existing, typ)
 	}
 	return p
 }

@@ -678,3 +678,62 @@ func TestEmptyOverride(t *testing.T) {
 	root := &gonestly.Module{Name: "app"}
 	assertContains(t, buildError(t, root, gonestly.Override(gonestly.Provider{})), "empty override")
 }
+
+type countingStore struct{ starts, stops *int }
+
+func (countingStore) Find() string { return "counting" }
+
+func (c *countingStore) OnStart(context.Context) error {
+	*c.starts++
+	return nil
+}
+
+func (c *countingStore) OnStop(context.Context) error {
+	*c.stops++
+	return nil
+}
+
+func TestAlias(t *testing.T) {
+	var starts, stops int
+	newCountingStore := func() *countingStore { return &countingStore{&starts, &stops} }
+	lib := &gonestly.Module{
+		Name:      "lib",
+		Providers: gonestly.Providers(newCountingStore, gonestly.Alias[userStore, *countingStore]()),
+		Exports:   gonestly.Exports(newCountingStore, gonestly.Type[userStore]()),
+	}
+	root := &gonestly.Module{Name: "app", Imports: gonestly.Imports(lib), Providers: gonestly.Providers(newStoreUser)}
+
+	app := mustStart(t, root)
+	concrete := mustResolve[*countingStore](t, app)
+	if mustResolve[*storeUser](t, app).store != userStore(concrete) {
+		t.Error("the alias does not share the instance")
+	}
+	if err := app.Stop(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if starts != 1 || stops != 1 {
+		t.Errorf("hooks ran %d and %d times, want once each", starts, stops)
+	}
+}
+
+func TestAliasErrors(t *testing.T) {
+	root := &gonestly.Module{Name: "app", Providers: gonestly.Providers(gonestly.Alias[userStore, *database]())}
+	assertContains(t, buildError(t, root), "*gonestly_test.database cannot be used as gonestly_test.userStore")
+
+	root = &gonestly.Module{Name: "app", Providers: gonestly.Providers(gonestly.Alias[userStore, *memoryStore]())}
+	err := buildError(t, root)
+	if !errors.Is(err, gonestly.ErrMissingDependency) {
+		t.Errorf("error is not ErrMissingDependency: %v", err)
+	}
+	assertContains(t, err, `alias of *gonestly_test.memoryStore as gonestly_test.userStore in module "app" needs *gonestly_test.memoryStore`)
+
+	lib := &gonestly.Module{
+		Name:      "lib",
+		Providers: gonestly.Providers(newMemoryStore, gonestly.Alias[userStore, *memoryStore]()),
+	}
+	lib.Exports = gonestly.Exports(lib.Providers[1])
+	app := mustStart(t, &gonestly.Module{Name: "app", Imports: gonestly.Imports(lib), Providers: gonestly.Providers(newStoreUser)})
+	if mustResolve[*storeUser](t, app).store == nil {
+		t.Error("the exported alias was not injected")
+	}
+}
