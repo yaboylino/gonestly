@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	contextType = reflect.TypeFor[context.Context]()
-	errorType   = reflect.TypeFor[error]()
+	contextType    = reflect.TypeFor[context.Context]()
+	errorType      = reflect.TypeFor[error]()
+	controllerType = reflect.TypeFor[Controller]()
 )
 
 // Provider describes how the application constructs one dependency; New reports invalid ones.

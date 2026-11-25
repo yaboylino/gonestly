@@ -12,6 +12,8 @@ var (
 	ErrMissingDependency = errors.New("missing dependency")
 	// ErrDependencyCycle reports providers or modules that depend on each other.
 	ErrDependencyCycle = errors.New("dependency cycle")
+	// ErrInvalidRoute reports a route that is declared incorrectly or conflicts with another.
+	ErrInvalidRoute = errors.New("invalid route")
 	// ErrNotStarted reports use of an application that is not running.
 	ErrNotStarted = errors.New("application not started")
 )

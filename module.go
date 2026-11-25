@@ -11,10 +11,18 @@ type Module struct {
 	Imports []*Module
 	// Providers are constructed by the application and can be injected into each other.
 	Providers []Provider
+	// Controllers handle HTTP requests. They are constructed like providers and can inject
+	// everything this module can, but they cannot be injected or exported themselves.
+	Controllers []Provider
 	// Exports are the providers that modules importing this module can use.
 	Exports []Export
 	// Global makes the exported providers available to every module without importing it.
 	Global bool
+}
+
+// Controllers turns controller constructors into providers, like Providers.
+func Controllers(items ...any) []Provider {
+	return Providers(items...)
 }
 
 // Imports returns its arguments as a slice, for symmetry with Providers and Exports.

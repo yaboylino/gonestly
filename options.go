@@ -14,6 +14,7 @@ type options struct {
 	logger          *slog.Logger
 	shutdownTimeout time.Duration
 	overrides       []Provider
+	listen          bool
 }
 
 // WithLogger sets the logger the application logs to and provides to every module.
@@ -41,4 +42,10 @@ func Override(items ...any) Option {
 	return func(o *options) {
 		o.overrides = append(o.overrides, Providers(items...)...)
 	}
+}
+
+// WithoutListener builds the HTTP handler without listening on a port. It is meant for tests
+// that send requests to App.Handler; see the gonestlytest package.
+func WithoutListener() Option {
+	return func(o *options) { o.listen = false }
 }

@@ -11,15 +11,17 @@ import (
 
 // container holds the resolved module graph and the order in which providers are constructed.
 type container struct {
-	root    *moduleNode
-	modules []*moduleNode
-	order   []*providerNode
+	root        *moduleNode
+	modules     []*moduleNode
+	order       []*providerNode
+	controllers []*providerNode
 }
 
 type moduleNode struct {
 	module      *Module
 	imports     []*moduleNode
 	providers   []*providerNode
+	controllers []*providerNode
 	exports     map[reflect.Type]*providerNode
 	exportOrder []reflect.Type
 	visible     map[reflect.Type]*providerNode
@@ -126,7 +128,11 @@ func buildContainer(root, core *Module, overrides []Provider) (*container, error
 	if err := b.failed(); err != nil {
 		return nil, err
 	}
-	return &container{root: rootNode, modules: b.modules, order: order}, nil
+	var controllers []*providerNode
+	for _, n := range b.modules {
+		controllers = append(controllers, n.controllers...)
+	}
+	return &container{root: rootNode, modules: b.modules, order: order, controllers: controllers}, nil
 }
 
 func (b *builder) registerOverrides(overrides []Provider) {
@@ -210,9 +216,30 @@ func (b *builder) visitModule(m *Module, parent *Module) *moduleNode {
 		node.providers = append(node.providers, pn)
 	}
 
+	b.registerControllers(node)
 	b.nodes[m] = node
 	b.modules = append(b.modules, node)
 	return node
+}
+
+func (b *builder) registerControllers(node *moduleNode) {
+	m := node.module
+	seen := map[reflect.Type]bool{}
+	for _, p := range m.Controllers {
+		switch {
+		case p.err != nil:
+			b.problem("%w: module %q: controller: %w", ErrInvalidModule, m.Name, p.err)
+		case p.typ == nil:
+			b.problem("%w: module %q has an empty controller; create it with Controllers or Provide", ErrInvalidModule, m.Name)
+		case !p.typ.Implements(controllerType):
+			b.problem("%w: module %q: controller %s returns %s, which has no Routes(*gonestly.Router) method", ErrInvalidModule, m.Name, p.name, p.typ)
+		case seen[p.typ]:
+			b.problem("%w: module %q has two controllers of %s", ErrInvalidModule, m.Name, p.typ)
+		default:
+			seen[p.typ] = true
+			node.controllers = append(node.controllers, &providerNode{provider: p, module: node, declaredPtr: p.fnPtr})
+		}
+	}
 }
 
 func (b *builder) resolveExports() {
@@ -321,7 +348,7 @@ func (b *builder) resolveVisibility() {
 
 func (b *builder) resolveDependencies() {
 	for _, n := range b.modules {
-		for _, pn := range n.providers {
+		for _, pn := range slices.Concat(n.providers, n.controllers) {
 			for _, param := range pn.provider.params {
 				if param == contextType {
 					pn.deps = append(pn.deps, nil)
@@ -421,7 +448,7 @@ func (b *builder) sortProviders() []*providerNode {
 	}
 
 	for _, n := range b.modules {
-		for _, pn := range n.providers {
+		for _, pn := range slices.Concat(n.providers, n.controllers) {
 			if state[pn] == unvisited {
 				visit(pn)
 			}

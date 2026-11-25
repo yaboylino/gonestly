@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"reflect"
@@ -30,9 +32,12 @@ type App struct {
 	logger          *slog.Logger
 	shutdownTimeout time.Duration
 
-	mu    sync.Mutex
-	state appState
-	live  []*providerNode
+	listen bool
+
+	mu     sync.Mutex
+	state  appState
+	live   []*providerNode
+	server *server
 
 	done        chan struct{}
 	doneOnce    sync.Once
@@ -41,12 +46,12 @@ type App struct {
 
 // New validates the module graph below root and reports every problem in it in one *BuildError.
 func New(root *Module, opts ...Option) (*App, error) {
-	o := options{logger: slog.Default(), shutdownTimeout: defaultShutdownTimeout}
+	o := options{logger: slog.Default(), shutdownTimeout: defaultShutdownTimeout, listen: true}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	app := &App{logger: o.logger, shutdownTimeout: o.shutdownTimeout, done: make(chan struct{})}
+	app := &App{logger: o.logger, shutdownTimeout: o.shutdownTimeout, listen: o.listen, done: make(chan struct{})}
 	core := &Module{
 		Name:      coreModuleName,
 		Global:    true,
@@ -61,8 +66,9 @@ func New(root *Module, opts ...Option) (*App, error) {
 	return app, nil
 }
 
-// Start constructs every provider in dependency order and calls OnStart on each Starter.
-// If one fails, the providers that already started are stopped again.
+// Start constructs every provider in dependency order and calls OnStart on each Starter, then
+// starts the HTTP server if there are controllers. If anything fails, the providers that
+// already started are stopped again.
 func (a *App) Start(ctx context.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -83,6 +89,9 @@ func (a *App) Start(ctx context.Context) error {
 		}
 		a.live = append(a.live, pn)
 	}
+	if err := a.startServer(ctx); err != nil {
+		return a.rollback(ctx, err)
+	}
 
 	a.logger.InfoContext(ctx, "application started",
 		slog.Int("modules", len(a.container.modules)-1),
@@ -92,17 +101,87 @@ func (a *App) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop calls OnStop on every started Stopper in reverse start order and returns all their errors.
-// It does nothing if the application is not running.
+// Stop shuts the HTTP server down, waiting for running requests, then calls OnStop on every
+// started Stopper in reverse start order. It returns all errors and does nothing if the
+// application is not running.
 func (a *App) Stop(ctx context.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.state != stateStarted {
 		return nil
 	}
-	err := a.stopLive(ctx)
+	var serverErr error
+	if a.server != nil {
+		serverErr = a.server.shutdown(ctx)
+	}
+	err := errors.Join(serverErr, a.stopLive(ctx))
 	a.logger.InfoContext(ctx, "application stopped")
 	return err
+}
+
+// Handler returns the HTTP handler of a started application, or nil if it has no controllers.
+// Use it to serve the application yourself or to test it with net/http/httptest.
+func (a *App) Handler() http.Handler {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.server == nil {
+		return nil
+	}
+	return a.server.handler
+}
+
+// Addr returns the address the HTTP server listens on, or nil if it does not listen. With
+// the port 0 in ServerConfig.Addr, it tells which port was chosen.
+func (a *App) Addr() net.Addr {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.server == nil || a.server.listener == nil {
+		return nil
+	}
+	return a.server.listener.Addr()
+}
+
+// Routes returns the routes of a started application, in registration order.
+func (a *App) Routes() []RouteInfo {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.server == nil {
+		return nil
+	}
+	return a.server.routeInfo()
+}
+
+func (a *App) startServer(ctx context.Context) error {
+	if len(a.container.controllers) == 0 {
+		return nil
+	}
+	controllers := make([]controllerInstance, 0, len(a.container.controllers))
+	for _, pn := range a.container.controllers {
+		c, _ := pn.instance.Interface().(Controller)
+		controllers = append(controllers, controllerInstance{name: pn.String(), controller: c})
+	}
+	config, _ := a.rootInstance(reflect.TypeFor[ServerConfig]()).(ServerConfig)
+	validator, _ := a.rootInstance(reflect.TypeFor[StructValidator]()).(StructValidator)
+
+	s, err := newServer(controllers, config, validator, a.logger)
+	if err != nil {
+		return err
+	}
+	if a.listen {
+		if err := s.listen(ctx, a.Shutdown); err != nil {
+			return err
+		}
+		a.logger.InfoContext(ctx, "http server listening", slog.String("addr", s.listener.Addr().String()), slog.Int("routes", len(s.routes)))
+	}
+	a.server = s
+	return nil
+}
+
+func (a *App) rootInstance(typ reflect.Type) any {
+	if pn, ok := a.container.root.visible[typ]; ok {
+		return pn.instance.Interface()
+	}
+	return nil
 }
 
 // Run starts the application, waits for an interrupt, a termination signal, a canceled ctx or a
