@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -676,4 +677,47 @@ func TestHTTPErrors(t *testing.T) {
 	if (&gonestly.HTTPError{Status: 599}).Error() != "599 Error" {
 		t.Error("unknown status has no fallback title")
 	}
+}
+
+func TestInspect(t *testing.T) {
+	for _, mode := range []string{"routes", "openapi", "nonsense"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv(gonestly.InspectEnv, mode)
+			app, err := gonestly.New(usersModule(), quietLogger())
+			if err != nil {
+				t.Fatal(err)
+			}
+			stdout := captureStdout(t, func() { err = app.Run(t.Context()) })
+			switch mode {
+			case "routes":
+				if err != nil || !strings.Contains(stdout, `{"method":"GET","path":"/users/{id}","controller":"gonestly_test.newUserController in module \"users\""}`) {
+					t.Errorf("err = %v, stdout = %s", err, stdout)
+				}
+			case "openapi":
+				if err != nil || !strings.HasPrefix(stdout, `{"openapi":"3.1.0"`) {
+					t.Errorf("err = %v, stdout = %.80s", err, stdout)
+				}
+			default:
+				assertContains(t, err, `GONESTLY_INSPECT must be routes or openapi, not "nonsense"`)
+			}
+			if app.Addr() != nil {
+				t.Error("the application listened while inspecting")
+			}
+		})
+	}
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = original }()
+	fn()
+	_ = w.Close()
+	out, _ := io.ReadAll(r)
+	return string(out)
 }

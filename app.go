@@ -2,8 +2,10 @@ package gonestly
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -17,6 +19,10 @@ import (
 )
 
 const coreModuleName = "gonestly"
+
+// InspectEnv makes Run print information about the application instead of serving it. The
+// gonestly CLI sets it to "routes" or "openapi" for the commands of the same name.
+const InspectEnv = "GONESTLY_INSPECT"
 
 type appState int
 
@@ -162,6 +168,29 @@ func (a *App) Routes() []RouteInfo {
 	return a.server.routeInfo()
 }
 
+// inspect starts the application without listening, writes its routes or OpenAPI document as
+// JSON to w and stops it again.
+func (a *App) inspect(ctx context.Context, mode string, w io.Writer) error {
+	if mode != "routes" && mode != "openapi" {
+		return fmt.Errorf("gonestly: %s must be routes or openapi, not %q", InspectEnv, mode)
+	}
+	a.listen = false
+	if err := a.Start(ctx); err != nil {
+		return err
+	}
+	var output []byte
+	var err error
+	if mode == "routes" {
+		output, err = json.Marshal(a.Routes())
+	} else {
+		output = a.OpenAPI()
+	}
+	if err == nil {
+		_, err = w.Write(output)
+	}
+	return errors.Join(err, a.Stop(context.WithoutCancel(ctx)))
+}
+
 func (a *App) startServer(ctx context.Context) error {
 	if len(a.container.controllers) == 0 {
 		return nil
@@ -199,6 +228,9 @@ func (a *App) rootInstance(typ reflect.Type) any {
 // Run starts the application, waits for an interrupt, a termination signal, a canceled ctx or a
 // call to Shutdown, and then stops it within the shutdown timeout.
 func (a *App) Run(ctx context.Context) error {
+	if mode := os.Getenv(InspectEnv); mode != "" {
+		return a.inspect(ctx, mode, os.Stdout)
+	}
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

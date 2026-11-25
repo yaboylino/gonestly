@@ -32,9 +32,9 @@ type Router struct {
 
 // RouteInfo describes a registered route.
 type RouteInfo struct {
-	Method     string
-	Path       string
-	Controller string
+	Method     string `json:"method"`
+	Path       string `json:"path"`
+	Controller string `json:"controller"`
 }
 
 type route struct {
