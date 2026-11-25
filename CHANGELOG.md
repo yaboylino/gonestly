@@ -34,3 +34,8 @@ All notable changes to this project are documented in this file. The format is b
 - Transactions through the context, with savepoints for nested transactions.
 - Migrations from SQL files with checksums, a lock on PostgreSQL and one transaction each.
 - `sql.ErrNotFound`, which answers 404 when a handler returns it.
+- An OpenAPI 3.1 document generated for every route, from the request and response types,
+  the `json`, `validate`, `doc` and `example` tags and the security schemes of guards, served
+  with Swagger UI and configured with `OpenAPIConfig`.
+- The route options `Summary`, `Description`, `Tags`, `OperationID` and `Deprecated`, and
+  `SecuredGuard` for guards that describe how clients authenticate.

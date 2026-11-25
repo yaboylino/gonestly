@@ -60,6 +60,10 @@ The request is bound from the path, query, headers and JSON body, validated, and
 sent as JSON. Errors such as `gonestly.NotFound("user %s does not exist", id)` become problem
 details (RFC 9457).
 
+Every route is described in an OpenAPI 3.1 document, generated from the handler types, the
+struct tags and the guards, and served at `/openapi.json` with Swagger UI at `/docs`. There
+is nothing to annotate.
+
 Typed configuration from environment variables and `.env` files, checked when the application
 starts:
 
@@ -114,7 +118,7 @@ works. The application starts again as soon as the problems are fixed.
 - [x] Core: modules, dependency injection, lifecycle hooks, configuration and logging
 - [x] HTTP: router, typed handlers, binding, validation, guards, interceptors and error handling
 - [x] SQL: repositories, typed query builder, transactions and migrations for PostgreSQL and SQLite
-- [ ] OpenAPI: a document and Swagger UI generated from every route
+- [x] OpenAPI: a document and Swagger UI generated from every route
 - [ ] CLI: `new`, `generate`, `dev` with live rebuild and restart, `migrate` and `routes`
 - [x] Documentation site in English and Dutch
 - [ ] MySQL support and examples
