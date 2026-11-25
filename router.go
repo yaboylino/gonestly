@@ -201,6 +201,9 @@ func addRoute[Req, Res any](r *Router, method, path string, h Handler[Req, Res],
 	rt.emptyResult = rt.resType == emptyType
 	rt.problems = append(rt.problems, problems...)
 	rt.problems = append(rt.problems, b.pathProblems(rt.path)...)
+	if (rt.status == http.StatusNoContent || rt.status == http.StatusNotModified) && !rt.emptyResult {
+		rt.problems = append(rt.problems, fmt.Sprintf("the status %d has no body; return gonestly.Empty instead of %s", rt.status, rt.resType))
+	}
 	if h == nil {
 		rt.problems = append(rt.problems, "the handler is nil")
 		return

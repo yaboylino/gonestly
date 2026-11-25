@@ -36,12 +36,16 @@ func readFiles(paths []string) (map[string]string, error) {
 }
 
 // parseDotenv parses KEY=VALUE lines. Values may be double quoted with escapes, single quoted
-// literally, or unquoted with an optional trailing comment. Variables are not expanded.
+// literally, or unquoted with an optional trailing comment. A quoted value may span several
+// lines, such as a certificate. Variables are not expanded.
 func parseDotenv(r io.Reader, name string) (map[string]string, error) {
 	vars := map[string]string{}
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineLength)
-	for lineNo := 1; scanner.Scan(); lineNo++ {
+	lineNo := 0
+	for scanner.Scan() {
+		lineNo++
+		start := lineNo
 		line := scanner.Text()
 		if lineNo == 1 {
 			line = strings.TrimPrefix(line, "\uFEFF")
@@ -55,11 +59,18 @@ func parseDotenv(r io.Reader, name string) (map[string]string, error) {
 		key, rawValue, ok := strings.Cut(line, "=")
 		key = strings.TrimSpace(key)
 		if !ok || !validKey(key) {
-			return nil, fmt.Errorf("config: %s:%d: expected KEY=VALUE", name, lineNo)
+			return nil, fmt.Errorf("config: %s:%d: expected KEY=VALUE", name, start)
 		}
+		rawValue = strings.TrimLeft(rawValue, " \t")
 		value, err := parseValue(strings.TrimSpace(rawValue))
+		// An open quote continues on the following lines, which are kept as they are.
+		for errors.Is(err, errUnterminated) && scanner.Scan() {
+			lineNo++
+			rawValue += "\n" + scanner.Text()
+			value, err = parseValue(strings.TrimRight(rawValue, " \t\r"))
+		}
 		if err != nil {
-			return nil, fmt.Errorf("config: %s:%d: %w", name, lineNo, err)
+			return nil, fmt.Errorf("config: %s:%d: %w", name, start, err)
 		}
 		vars[key] = value
 	}
@@ -69,6 +80,8 @@ func parseDotenv(r io.Reader, name string) (map[string]string, error) {
 	return vars, nil
 }
 
+var errUnterminated = errors.New("unterminated quoted value")
+
 func parseValue(raw string) (string, error) {
 	switch {
 	case strings.HasPrefix(raw, `"`):
@@ -76,7 +89,7 @@ func parseValue(raw string) (string, error) {
 	case strings.HasPrefix(raw, "'"):
 		end := strings.IndexByte(raw[1:], '\'')
 		if end < 0 {
-			return "", errors.New("unterminated single quoted value")
+			return "", fmt.Errorf("%w: the closing ' is missing", errUnterminated)
 		}
 		return raw[1 : end+1], checkTrailing(raw[end+2:])
 	default:
@@ -110,7 +123,7 @@ func parseDoubleQuoted(s string) (string, error) {
 			b.WriteByte(c)
 		}
 	}
-	return "", errors.New("unterminated double quoted value")
+	return "", fmt.Errorf("%w: the closing \" is missing", errUnterminated)
 }
 
 func checkTrailing(rest string) error {

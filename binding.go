@@ -52,6 +52,10 @@ func newBinder(t reflect.Type) (*binder, []string) {
 		for _, source := range bindingSources {
 			if name, ok := f.Tag.Lookup(source); ok {
 				sources = append(sources, source)
+				if embeddedThroughPointer(t, f.Index) {
+					problems = append(problems, fmt.Sprintf("%s.%s is embedded through a pointer; embed the struct itself", t.Name(), f.Name))
+					continue
+				}
 				b.fields = append(b.fields, boundField{
 					index: f.Index,
 					name:  name,
@@ -75,6 +79,19 @@ func newBinder(t reflect.Type) (*binder, []string) {
 		}
 	}
 	return b, problems
+}
+
+// embeddedThroughPointer reports whether a promoted field lies behind an embedded pointer,
+// which is nil in a new request value.
+func embeddedThroughPointer(t reflect.Type, index []int) bool {
+	for _, i := range index[:len(index)-1] {
+		f := t.Field(i)
+		if f.Type.Kind() == reflect.Pointer {
+			return true
+		}
+		t = f.Type
+	}
+	return false
 }
 
 // pathProblems reports path fields that the route's pattern does not provide.

@@ -3,7 +3,9 @@ package convert
 
 import (
 	"encoding"
+	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -23,7 +25,10 @@ func IsTextUnmarshaler(t reflect.Type) bool {
 // Supported reports whether Set can parse text into a value of type t.
 func Supported(t reflect.Type) bool {
 	if t.Kind() == reflect.Slice && !IsTextUnmarshaler(t) {
-		return t.Elem().Kind() != reflect.Slice && Supported(t.Elem())
+		return t.Elem().Kind() != reflect.Slice && t.Elem().Kind() != reflect.Pointer && Supported(t.Elem())
+	}
+	if t.Kind() == reflect.Pointer {
+		return t.Elem().Kind() != reflect.Pointer && supportedScalar(t.Elem())
 	}
 	return supportedScalar(t)
 }
@@ -73,9 +78,18 @@ func SetAll(v reflect.Value, values []string) error {
 
 func setScalar(v reflect.Value, raw string) error {
 	t := v.Type()
+	if t.Kind() == reflect.Pointer {
+		// A pointer stays nil when the value is absent, and points at the parsed value otherwise.
+		target := reflect.New(t.Elem())
+		if err := setScalar(target.Elem(), raw); err != nil {
+			return err
+		}
+		v.Set(target)
+		return nil
+	}
 	if IsTextUnmarshaler(t) {
 		if err := v.Addr().Interface().(encoding.TextUnmarshaler).UnmarshalText([]byte(raw)); err != nil { //nolint:forcetypeassert // checked by IsTextUnmarshaler
-			return fmt.Errorf("%q is not a valid %s: %w", raw, t, err)
+			return fmt.Errorf("%q is not valid: %w", raw, err)
 		}
 		return nil
 	}
@@ -100,23 +114,32 @@ func setScalar(v reflect.Value, raw string) error {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		n, err := strconv.ParseInt(raw, 10, t.Bits())
 		if err != nil {
-			return fmt.Errorf("%q is not a valid %s", raw, t)
+			return numberError(raw, "a whole number", err)
 		}
 		v.SetInt(n)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		n, err := strconv.ParseUint(raw, 10, t.Bits())
 		if err != nil {
-			return fmt.Errorf("%q is not a valid %s", raw, t)
+			return numberError(raw, "a whole number of 0 or more", err)
 		}
 		v.SetUint(n)
 	case reflect.Float32, reflect.Float64:
 		f, err := strconv.ParseFloat(raw, t.Bits())
-		if err != nil {
-			return fmt.Errorf("%q is not a valid %s", raw, t)
+		// NaN and infinity parse, but no JSON response can carry them.
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			return numberError(raw, "a number", err)
 		}
 		v.SetFloat(f)
 	default:
 		return fmt.Errorf("unsupported type %s", t)
 	}
 	return nil
+}
+
+// numberError names the kind of number in words, since the message can reach an API client.
+func numberError(raw, kind string, err error) error {
+	if errors.Is(err, strconv.ErrRange) {
+		return fmt.Errorf("%q is out of range", raw)
+	}
+	return fmt.Errorf("%q is not %s", raw, kind)
 }

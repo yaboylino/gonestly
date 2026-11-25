@@ -126,8 +126,26 @@ func newServer(controllers []controllerInstance, config ServerConfig, openAPI Op
 	for _, mw := range slices.Backward(s.config.Middleware) {
 		handler = mw(handler)
 	}
-	s.handler = handler
+	s.handler = s.recovered(handler)
 	return s, nil
+}
+
+// recovered answers a panic in a handler, guard, interceptor or middleware with a 500.
+func (s *server) recovered(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			v := recover()
+			if v == nil {
+				return
+			}
+			if v == http.ErrAbortHandler { //nolint:errorlint // net/http compares the sentinel directly
+				panic(v)
+			}
+			s.logger.ErrorContext(r.Context(), "handler panicked", slog.Any("panic", v), slog.String("stack", string(debug.Stack())))
+			writeError(w, r, fmt.Errorf("panic: %v", v), s.logger)
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *server) serveOpenAPI(config OpenAPIConfig) {
@@ -176,16 +194,6 @@ func (s *server) routeHandler(rt *route) http.Handler {
 	interceptors := append(slices.Clip(s.config.Interceptors), rt.interceptors...)
 
 	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if v := recover(); v != nil {
-				if v == http.ErrAbortHandler { //nolint:errorlint // net/http compares the sentinel directly
-					panic(v)
-				}
-				s.logger.ErrorContext(r.Context(), "handler panicked", slog.Any("panic", v), slog.String("stack", string(debug.Stack())))
-				writeError(w, r, fmt.Errorf("panic: %v", v), s.logger)
-			}
-		}()
-
 		ctx := context.WithValue(r.Context(), requestKey{}, &requestState{request: r, header: w.Header()})
 		for _, guard := range guards {
 			next, err := guard.Check(ctx, r)

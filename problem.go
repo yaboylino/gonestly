@@ -32,8 +32,13 @@ func writeError(w http.ResponseWriter, r *http.Request, err error, logger *slog.
 	if status < 400 || status > 599 {
 		status = http.StatusInternalServerError
 	}
-	if status >= 500 {
-		logger.ErrorContext(r.Context(), "request failed",
+	// A client error is only worth a line when it carries a cause the client never sees.
+	level := slog.LevelError
+	if status < 500 {
+		level = slog.LevelDebug
+	}
+	if status >= 500 || httpErr.Err != nil {
+		logger.Log(r.Context(), level, "request failed",
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.Int("status", status),

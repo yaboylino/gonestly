@@ -2,6 +2,7 @@ package gonestly
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"runtime"
@@ -42,7 +43,10 @@ func As[T any](constructor any) Provider {
 func Value[T any](v T) Provider {
 	typ := reflect.TypeFor[T]()
 	p := Provider{typ: typ, value: reflect.ValueOf(&v).Elem(), name: "value " + typ.String()}
-	if isNil(p.value) {
+	switch {
+	case typ == contextType:
+		p.err = errors.New("a context.Context cannot be provided; it is reserved for the context of App.Start")
+	case isNil(p.value):
 		p.err = fmt.Errorf("value %s is nil", typ)
 	}
 	return p
@@ -99,6 +103,10 @@ func newConstructorProvider(constructor any, as reflect.Type) Provider {
 	}
 
 	p.typ = ft.Out(0)
+	if p.typ == contextType {
+		p.err = fmt.Errorf("constructor %s returns a context.Context, which is reserved for the context of App.Start", p.name)
+		return p
+	}
 	if as != nil {
 		if !p.typ.AssignableTo(as) {
 			p.err = fmt.Errorf("constructor %s returns %s, which cannot be provided as %s", p.name, p.typ, as)

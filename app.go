@@ -24,10 +24,15 @@ const coreModuleName = "gonestly"
 // gonestly CLI sets it to "routes" or "openapi" for the commands of the same name.
 const InspectEnv = "GONESTLY_INSPECT"
 
+// InspectOutputEnv names the file that the inspection is written to instead of standard
+// output, so that what the application itself prints cannot end up in it.
+const InspectOutputEnv = "GONESTLY_INSPECT_OUTPUT"
+
 type appState int
 
 const (
 	stateIdle appState = iota
+	stateStarting
 	stateStarted
 	stateStopped
 )
@@ -40,10 +45,13 @@ type App struct {
 
 	listen bool
 
-	mu     sync.Mutex
-	state  appState
-	live   []*providerNode
-	server *server
+	// lifecycle serializes Start and Stop; mu guards the fields below, so that hooks and
+	// running requests can still use Resolve and the accessors while the app starts or stops.
+	lifecycle sync.Mutex
+	mu        sync.RWMutex
+	state     appState
+	live      []*providerNode
+	server    *server
 
 	done        chan struct{}
 	doneOnce    sync.Once
@@ -76,28 +84,33 @@ func New(root *Module, opts ...Option) (*App, error) {
 // starts the HTTP server if there are controllers. If anything fails, the providers that
 // already started are stopped again.
 func (a *App) Start(ctx context.Context) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.state != stateIdle {
+	a.lifecycle.Lock()
+	defer a.lifecycle.Unlock()
+	if a.currentState() != stateIdle {
 		return errors.New("gonestly: an application can only be started once")
 	}
-	a.state = stateStarted
+	a.setState(stateStarting)
 
 	begin := time.Now()
+	var live []*providerNode
 	for _, pn := range a.container.order {
 		if err := pn.build(ctx); err != nil {
-			return a.rollback(ctx, fmt.Errorf("gonestly: constructing %s: %w", pn, err))
+			return a.rollback(ctx, live, fmt.Errorf("gonestly: constructing %s: %w", pn, err))
 		}
 		if s, ok := pn.instance.Interface().(Starter); ok && !pn.provider.alias {
 			if err := callHook(func() error { return s.OnStart(ctx) }); err != nil {
-				return a.rollback(ctx, fmt.Errorf("gonestly: starting %s: %w", pn, err))
+				return a.rollback(ctx, live, fmt.Errorf("gonestly: starting %s: %w", pn, err))
 			}
 		}
-		a.live = append(a.live, pn)
+		live = append(live, pn)
 	}
-	if err := a.startServer(ctx); err != nil {
-		return a.rollback(ctx, err)
+	server, err := a.startServer(ctx)
+	if err != nil {
+		return a.rollback(ctx, live, err)
 	}
+	a.mu.Lock()
+	a.state, a.live, a.server = stateStarted, live, server
+	a.mu.Unlock()
 
 	a.logger.InfoContext(ctx, "application started",
 		slog.Int("modules", len(a.container.modules)-1),
@@ -111,25 +124,43 @@ func (a *App) Start(ctx context.Context) error {
 // started Stopper in reverse start order. It returns all errors and does nothing if the
 // application is not running.
 func (a *App) Stop(ctx context.Context) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.state != stateStarted {
+	a.lifecycle.Lock()
+	defer a.lifecycle.Unlock()
+	a.mu.RLock()
+	state, server, live := a.state, a.server, a.live
+	a.mu.RUnlock()
+	if state != stateStarted {
 		return nil
 	}
 	var serverErr error
-	if a.server != nil {
-		serverErr = a.server.shutdown(ctx)
+	if server != nil {
+		serverErr = server.shutdown(ctx)
 	}
-	err := errors.Join(serverErr, a.stopLive(ctx))
+	err := errors.Join(serverErr, stopProviders(ctx, live))
+	a.mu.Lock()
+	a.state, a.live = stateStopped, nil
+	a.mu.Unlock()
 	a.logger.InfoContext(ctx, "application stopped")
 	return err
+}
+
+func (a *App) currentState() appState {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.state
+}
+
+func (a *App) setState(state appState) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.state = state
 }
 
 // Handler returns the HTTP handler of a started application, or nil if it has no controllers.
 // Use it to serve the application yourself or to test it with net/http/httptest.
 func (a *App) Handler() http.Handler {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.server == nil {
 		return nil
 	}
@@ -139,8 +170,8 @@ func (a *App) Handler() http.Handler {
 // Addr returns the address the HTTP server listens on, or nil if it does not listen. With
 // the port 0 in ServerConfig.Addr, it tells which port was chosen.
 func (a *App) Addr() net.Addr {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.server == nil || a.server.listener == nil {
 		return nil
 	}
@@ -150,8 +181,8 @@ func (a *App) Addr() net.Addr {
 // OpenAPI returns the OpenAPI 3.1 document of a started application as JSON, or nil if it has
 // no controllers. It is built even when OpenAPIConfig.Disabled stops serving it.
 func (a *App) OpenAPI() []byte {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.server == nil {
 		return nil
 	}
@@ -160,8 +191,8 @@ func (a *App) OpenAPI() []byte {
 
 // Routes returns the routes of a started application, in registration order.
 func (a *App) Routes() []RouteInfo {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.server == nil {
 		return nil
 	}
@@ -191,9 +222,20 @@ func (a *App) inspect(ctx context.Context, mode string, w io.Writer) error {
 	return errors.Join(err, a.Stop(context.WithoutCancel(ctx)))
 }
 
-func (a *App) startServer(ctx context.Context) error {
+func (a *App) inspectTo(ctx context.Context, mode, path string) error {
+	if path == "" {
+		return a.inspect(ctx, mode, os.Stdout)
+	}
+	file, err := os.Create(path) //nolint:gosec // the path comes from the environment of the process
+	if err != nil {
+		return fmt.Errorf("gonestly: %s: %w", InspectOutputEnv, err)
+	}
+	return errors.Join(a.inspect(ctx, mode, file), file.Close())
+}
+
+func (a *App) startServer(ctx context.Context) (*server, error) {
 	if len(a.container.controllers) == 0 {
-		return nil
+		return nil, nil //nolint:nilnil // an application without controllers has no server
 	}
 	controllers := make([]controllerInstance, 0, len(a.container.controllers))
 	for _, pn := range a.container.controllers {
@@ -206,16 +248,15 @@ func (a *App) startServer(ctx context.Context) error {
 
 	s, err := newServer(controllers, config, openAPI, validator, a.logger)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if a.listen {
 		if err := s.listen(ctx, a.Shutdown); err != nil {
-			return err
+			return nil, err
 		}
 		a.logger.InfoContext(ctx, "http server listening", slog.String("addr", s.listener.Addr().String()), slog.Int("routes", len(s.routes)))
 	}
-	a.server = s
-	return nil
+	return s, nil
 }
 
 func (a *App) rootInstance(typ reflect.Type) any {
@@ -229,7 +270,7 @@ func (a *App) rootInstance(typ reflect.Type) any {
 // call to Shutdown, and then stops it within the shutdown timeout.
 func (a *App) Run(ctx context.Context) error {
 	if mode := os.Getenv(InspectEnv); mode != "" {
-		return a.inspect(ctx, mode, os.Stdout)
+		return a.inspectTo(ctx, mode, os.Getenv(InspectOutputEnv))
 	}
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -274,8 +315,8 @@ func (a *App) Shutdown(err error) {
 // Resolve returns the provider of type T that is available in the root module of a started app.
 func Resolve[T any](a *App) (T, error) {
 	var zero T
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.state != stateStarted {
 		return zero, fmt.Errorf("gonestly: %w", ErrNotStarted)
 	}
@@ -298,13 +339,15 @@ func callHook(hook func() error) (err error) {
 	return hook()
 }
 
-func (a *App) rollback(ctx context.Context, cause error) error {
-	return errors.Join(cause, a.stopLive(ctx))
+func (a *App) rollback(ctx context.Context, live []*providerNode, cause error) error {
+	err := errors.Join(cause, stopProviders(ctx, live))
+	a.setState(stateStopped)
+	return err
 }
 
-func (a *App) stopLive(ctx context.Context) error {
+func stopProviders(ctx context.Context, live []*providerNode) error {
 	var errs []error
-	for _, pn := range slices.Backward(a.live) {
+	for _, pn := range slices.Backward(live) {
 		s, ok := pn.instance.Interface().(Stopper)
 		if !ok || pn.provider.alias {
 			continue
@@ -313,7 +356,5 @@ func (a *App) stopLive(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("gonestly: stopping %s: %w", pn, err))
 		}
 	}
-	a.state = stateStopped
-	a.live = nil
 	return errors.Join(errs...)
 }

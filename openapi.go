@@ -153,12 +153,12 @@ func buildOpenAPI(routes []*route, config OpenAPIConfig, globalGuards []Guard) *
 		doc.Servers = append(doc.Servers, openAPIServer{URL: url})
 	}
 
-	operationIDs := map[string]int{}
+	operations := make([]*openAPIOperation, 0, len(routes))
 	var tags []string
 	securitySchemes := map[string]SecurityScheme{}
 	for _, rt := range routes {
 		op := buildOperation(g, rt, slices.Concat(globalGuards, rt.guards), securitySchemes)
-		operationIDs[op.OperationID]++
+		operations = append(operations, op)
 		for _, tag := range op.Tags {
 			if !slices.Contains(tags, tag) {
 				tags = append(tags, tag)
@@ -171,14 +171,7 @@ func buildOpenAPI(routes []*route, config OpenAPIConfig, globalGuards []Guard) *
 		doc.Paths[path][strings.ToLower(rt.method)] = op
 	}
 
-	// Operation IDs must be unique; a handler name used twice gets its tag as a prefix.
-	for _, methods := range doc.Paths {
-		for _, op := range methods {
-			if operationIDs[op.OperationID] > 1 && len(op.Tags) > 0 {
-				op.OperationID = op.Tags[0] + "." + op.OperationID
-			}
-		}
-	}
+	uniqueOperationIDs(routes, operations)
 	for _, tag := range tags {
 		doc.Tags = append(doc.Tags, openAPITag{Name: tag, Description: config.Tags[tag]})
 	}
@@ -195,6 +188,37 @@ func buildOpenAPI(routes []*route, config OpenAPIConfig, globalGuards []Guard) *
 		}
 	}
 	return doc
+}
+
+// uniqueOperationIDs makes every operation ID unique, as OpenAPI requires: a handler name used
+// twice gets its tag as a prefix, and what still clashes is named after its method and path.
+func uniqueOperationIDs(routes []*route, operations []*openAPIOperation) {
+	count := func() map[string]int {
+		counts := map[string]int{}
+		for _, op := range operations {
+			counts[op.OperationID]++
+		}
+		return counts
+	}
+	counts := count()
+	for _, op := range operations {
+		if counts[op.OperationID] > 1 && len(op.Tags) > 0 {
+			op.OperationID = op.Tags[0] + "." + op.OperationID
+		}
+	}
+	counts = count()
+	for i, op := range operations {
+		if counts[op.OperationID] > 1 {
+			op.OperationID = operationIDFromPath(routes[i].method, routes[i].path)
+		}
+	}
+	seen := map[string]int{}
+	for _, op := range operations {
+		seen[op.OperationID]++
+		if n := seen[op.OperationID]; n > 1 {
+			op.OperationID += strconv.Itoa(n)
+		}
+	}
 }
 
 func buildOperation(g *schemaGenerator, rt *route, guards []Guard, schemes map[string]SecurityScheme) *openAPIOperation {
@@ -224,7 +248,12 @@ func buildOperation(g *schemaGenerator, rt *route, guards []Guard, schemes map[s
 	if rt.binder != nil {
 		for _, f := range rt.binder.fields {
 			sf := rt.reqType.FieldByIndex(f.index)
-			schema := describe(g.schema(sf.Type), sf)
+			paramType := sf.Type
+			if paramType.Kind() == reflect.Pointer {
+				// A pointer tells an absent parameter from a zero one; it is not nullable.
+				paramType = paramType.Elem()
+			}
+			schema := describe(g.schema(paramType), sf)
 			if schema.Description == sf.Tag.Get("doc") {
 				// The parameter carries the description; repeating it in its schema adds noise.
 				schema.Description = ""

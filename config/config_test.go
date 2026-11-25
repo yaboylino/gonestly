@@ -128,14 +128,14 @@ func TestLoadReportsEveryProblem(t *testing.T) {
 		t.Fatal("Load succeeded, want an error")
 	}
 	for _, part := range []string{
-		`config: PORT: "abc" is not a valid int`,
+		`config: PORT: "abc" is not a whole number`,
 		"config: TOKEN is required",
 		"config: SECRET is required",
 		`config: DEBUG: "maybe" is not a valid boolean`,
 		`config: TIMEOUT: "5" is not a valid duration`,
-		`config: RATIO: "x" is not a valid float32`,
-		`config: COUNT: "300" is not a valid uint8`,
-		`config: WEIGHTS: item 2: "two" is not a valid int`,
+		`config: RATIO: "x" is not a number`,
+		`config: COUNT: "300" is out of range`,
+		`config: WEIGHTS: item 2: "two" is not a whole number`,
 		"config: ADDRESS: ",
 		"config: SETTINGS: field Settings has unsupported type map[string]string",
 	} {
@@ -229,8 +229,8 @@ func TestInvalidDotenv(t *testing.T) {
 		{"NAME\n", ":1: expected KEY=VALUE"},
 		{"\n1NAME=x\n", ":2: expected KEY=VALUE"},
 		{"NA-ME=x\n", ":1: expected KEY=VALUE"},
-		{`NAME="open` + "\n", ":1: unterminated double quoted value"},
-		{"NAME='open\n", ":1: unterminated single quoted value"},
+		{`NAME="open` + "\n", `:1: unterminated quoted value: the closing " is missing`},
+		{"OTHER=1\nNAME='open\nMORE=2\n", ":2: unterminated quoted value: the closing ' is missing"},
 		{`NAME="a" b` + "\n", `:1: unexpected "b" after the closing quote`},
 	}
 	type cfg struct{ Name string }
@@ -283,7 +283,7 @@ func TestModule(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = app.Start(t.Context())
-	if err == nil || !strings.Contains(err.Error(), `constructing config.Module.func1 in module "config": config: PORT is required`) {
+	if err == nil || !strings.Contains(err.Error(), `constructing config.Module.func1 in module "config config_test.cfg": config: PORT is required`) {
 		t.Errorf("Start = %v, want a configuration error", err)
 	}
 }
@@ -301,5 +301,34 @@ func TestDotenvByteOrderMarkAndLongLines(t *testing.T) {
 	}
 	if got.Name != "bom" || got.Cert != long {
 		t.Errorf("Name = %q, len(Cert) = %d", got.Name, len(got.Cert))
+	}
+}
+
+func TestDotenvMultilineValues(t *testing.T) {
+	type cfg struct {
+		Key   string
+		Note  string
+		After string
+	}
+	content := "KEY=\"-----BEGIN-----\n  abc\ndef\n-----END-----\" # the key\nNOTE='one\ntwo'\nAFTER=x\n"
+	got, err := config.Load[cfg](config.Options{Files: []string{writeFile(t, content)}, LookupEnv: env(nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := cfg{Key: "-----BEGIN-----\n  abc\ndef\n-----END-----", Note: "one\ntwo", After: "x"}
+	if got != want {
+		t.Errorf("config = %+v, want %+v", got, want)
+	}
+}
+
+func TestModulesForDifferentTypes(t *testing.T) {
+	type first struct{ Port int }
+	type second struct{ Name string }
+	root := &gonestly.Module{Name: "app", Imports: gonestly.Imports(
+		config.Module[first](config.Options{Files: []string{}}),
+		config.Module[second](config.Options{Files: []string{}}),
+	)}
+	if _, err := gonestly.New(root); err != nil {
+		t.Errorf("New() = %v, want two configuration modules side by side", err)
 	}
 }

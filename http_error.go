@@ -16,7 +16,8 @@ type HTTPError struct {
 	Detail string
 	// Errors lists invalid fields, for validation errors.
 	Errors []FieldError
-	// Err is the underlying cause. It is logged, never sent to the client.
+	// Err is the underlying cause. It is logged, at debug level for a 4xx status, and never
+	// sent to the client.
 	Err error
 }
 

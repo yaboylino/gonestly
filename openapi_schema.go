@@ -96,10 +96,8 @@ func newSchemaGenerator() *schemaGenerator {
 }
 
 func (g *schemaGenerator) schema(t reflect.Type) *Schema {
-	if t.Implements(schemerType) {
-		if s := reflect.Zero(t).Interface().(JSONSchemer).JSONSchema(); s != nil { //nolint:forcetypeassert // checked above
-			return s
-		}
+	if s := customSchema(t); s != nil {
+		return s
 	}
 	switch {
 	case t == timeType:
@@ -122,9 +120,9 @@ func (g *schemaGenerator) schema(t reflect.Type) *Schema {
 		return &Schema{Type: "integer", Format: "int32"}
 	case reflect.Int, reflect.Int64:
 		return &Schema{Type: "integer", Format: "int64"}
-	case reflect.Uint8, reflect.Uint16, reflect.Uint32:
+	case reflect.Uint8, reflect.Uint16:
 		return &Schema{Type: "integer", Format: "int32", Minimum: ptr(0.0)}
-	case reflect.Uint, reflect.Uint64, reflect.Uintptr:
+	case reflect.Uint32, reflect.Uint, reflect.Uint64, reflect.Uintptr:
 		return &Schema{Type: "integer", Format: "int64", Minimum: ptr(0.0)}
 	case reflect.Float32:
 		return &Schema{Type: "number", Format: "float"}
@@ -133,7 +131,8 @@ func (g *schemaGenerator) schema(t reflect.Type) *Schema {
 	case reflect.String:
 		return &Schema{Type: "string"}
 	case reflect.Slice, reflect.Array:
-		if t.Elem().Kind() == reflect.Uint8 {
+		// encoding/json writes a byte slice as base64, but a byte array as numbers.
+		if t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8 {
 			return &Schema{Type: "string", Format: "byte"}
 		}
 		return &Schema{Type: "array", Items: g.schema(t.Elem())}
@@ -149,6 +148,20 @@ func (g *schemaGenerator) schema(t reflect.Type) *Schema {
 	default:
 		return &Schema{}
 	}
+}
+
+// customSchema asks a JSONSchemer for its schema, on a new value so that a pointer receiver works.
+func customSchema(t reflect.Type) *Schema {
+	var v reflect.Value
+	switch {
+	case t.Kind() == reflect.Pointer && t.Implements(schemerType):
+		v = reflect.New(t.Elem())
+	case t.Kind() != reflect.Pointer && reflect.PointerTo(t).Implements(schemerType):
+		v = reflect.New(t)
+	default:
+		return nil
+	}
+	return v.Interface().(JSONSchemer).JSONSchema() //nolint:forcetypeassert // checked above
 }
 
 // ref returns a reference to the component of a named struct, creating it on first use.

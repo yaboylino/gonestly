@@ -41,6 +41,9 @@ func TestSet(t *testing.T) {
 	if v, err := set[[]int](t, " "); err != nil || v == nil || len(v) != 0 {
 		t.Errorf("empty slice = %#v, %v", v, err)
 	}
+	if v, err := set[*int](t, "0"); err != nil || v == nil || *v != 0 {
+		t.Errorf("pointer = %v, %v", v, err)
+	}
 }
 
 func TestSetErrors(t *testing.T) {
@@ -48,13 +51,16 @@ func TestSetErrors(t *testing.T) {
 		err  error
 		want string
 	}{
-		{second(set[int8](t, "300")), `"300" is not a valid int8`},
-		{second(set[uint](t, "-1")), `"-1" is not a valid uint`},
-		{second(set[float32](t, "x")), `"x" is not a valid float32`},
+		{second(set[int8](t, "300")), `"300" is out of range`},
+		{second(set[uint](t, "-1")), `"-1" is not a whole number of 0 or more`},
+		{second(set[float32](t, "x")), `"x" is not a number`},
+		{second(set[float64](t, "NaN")), `"NaN" is not a number`},
+		{second(set[float64](t, "+Inf")), `"+Inf" is not a number`},
+		{second(set[*int](t, "x")), `"x" is not a whole number`},
 		{second(set[bool](t, "maybe")), `"maybe" is not a valid boolean, such as true or false`},
 		{second(set[time.Duration](t, "5")), `"5" is not a valid duration, such as 30s or 5m`},
-		{second(set[netip.Addr](t, "nope")), `"nope" is not a valid netip.Addr: ParseAddr("nope"): unable to parse IP`},
-		{second(set[[]int](t, "1,x")), `item 2: "x" is not a valid int`},
+		{second(set[netip.Addr](t, "nope")), `"nope" is not valid: ParseAddr("nope"): unable to parse IP`},
+		{second(set[[]int](t, "1,x")), `item 2: "x" is not a whole number`},
 		{second(set[complex64](t, "1")), "unsupported type complex64"},
 	}
 	for _, tt := range tests {
@@ -67,12 +73,12 @@ func TestSetErrors(t *testing.T) {
 func second[T any](_ T, err error) error { return err }
 
 func TestSupported(t *testing.T) {
-	for _, v := range []any{"", 0, uint(0), 0.0, false, time.Duration(0), netip.Addr{}, []string{}, []netip.Addr{}} {
+	for _, v := range []any{"", 0, uint(0), 0.0, false, time.Duration(0), netip.Addr{}, []string{}, []netip.Addr{}, new(int), new(netip.Addr)} {
 		if !convert.Supported(reflect.TypeOf(v)) {
 			t.Errorf("%T is not supported", v)
 		}
 	}
-	for _, v := range []any{map[string]string{}, [][]string{}, struct{}{}, complex64(0), &struct{}{}} {
+	for _, v := range []any{map[string]string{}, [][]string{}, struct{}{}, complex64(0), &struct{}{}, new(*int), []*int{}} {
 		if convert.Supported(reflect.TypeOf(v)) {
 			t.Errorf("%T is supported", v)
 		}

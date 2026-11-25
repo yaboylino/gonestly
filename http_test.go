@@ -170,7 +170,7 @@ func TestRequestErrors(t *testing.T) {
 			res:    app.Get("/users?page=two"),
 			status: http.StatusBadRequest,
 			detail: "One or more fields are invalid.",
-			errors: []gonestly.FieldError{{Field: "page", In: "query", Message: `"two" is not a valid int`}},
+			errors: []gonestly.FieldError{{Field: "page", In: "query", Message: `"two" is not a whole number`}},
 		},
 		{
 			name:   "validation",

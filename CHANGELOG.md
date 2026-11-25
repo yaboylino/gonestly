@@ -45,4 +45,7 @@ All notable changes to this project are documented in this file. The format is b
   when a change breaks the build, vet or tests, `migrate` applies, reverts, lists and creates
   migrations, and `routes` and `openapi` inspect the application.
 - `InspectEnv`, which makes `App.Run` print the routes or the OpenAPI document instead of
-  serving.
+  serving, and `InspectOutputEnv` to write them to a file.
+- Pointer fields such as `*int` for path, query, header and configuration values, which stay
+  nil when the value is absent.
+- Quoted values that span several lines in dotenv files.
