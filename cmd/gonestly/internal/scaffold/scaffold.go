@@ -187,6 +187,16 @@ func NewProject(ctx context.Context, opts ProjectOptions, printer *term.Printer)
 		return nil
 	}
 	printer.Info("downloading dependencies")
+	if err := install(ctx, opts); err != nil {
+		return fmt.Errorf("the project was created in %s, but its dependencies could not be downloaded; run go mod tidy there to try again: %w", opts.Dir, err)
+	}
+	if _, err := exec.LookPath("git"); err == nil {
+		_ = run(ctx, opts.Dir, "git", "init", "--quiet")
+	}
+	return nil
+}
+
+func install(ctx context.Context, opts ProjectOptions) error {
 	if opts.Replace == "" {
 		modules := []string{gonestlyModule + "@latest", gonestlyModule + "/validator@latest"}
 		if opts.Database != "" {
@@ -196,13 +206,7 @@ func NewProject(ctx context.Context, opts ProjectOptions, printer *term.Printer)
 			return err
 		}
 	}
-	if err := run(ctx, opts.Dir, "go", "mod", "tidy"); err != nil {
-		return err
-	}
-	if _, err := exec.LookPath("git"); err == nil {
-		_ = run(ctx, opts.Dir, "git", "init", "--quiet")
-	}
-	return nil
+	return run(ctx, opts.Dir, "go", "mod", "tidy")
 }
 
 func writeGoMod(opts ProjectOptions, module string) error {
@@ -244,6 +248,9 @@ type GenerateOptions struct {
 func Generate(kind, name string, opts GenerateOptions, printer *term.Printer) error {
 	names, err := NewNames(name)
 	if err != nil {
+		return err
+	}
+	if err := names.checkGenerated(kind); err != nil {
 		return err
 	}
 	p := opts.Project

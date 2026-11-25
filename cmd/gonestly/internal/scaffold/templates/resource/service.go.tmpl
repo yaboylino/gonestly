@@ -20,7 +20,7 @@ func NewService(repo *sql.Repository[{{.Names.Model}}, int64]) *Service {
 }
 
 // List returns a page of {{.Names.Words}}, oldest first.
-func (s *Service) List(ctx context.Context, page, limit int) (Page, error) {
+func (s *Service) List(ctx context.Context, page, limit int) (ListResponse, error) {
 	page = max(page, 1)
 	if limit < 1 {
 		limit = defaultLimit
@@ -28,16 +28,16 @@ func (s *Service) List(ctx context.Context, page, limit int) (Page, error) {
 	query := s.repo.Query()
 	items, err := query.OrderBy({{.Names.Model}}Columns.ID.Asc()).Limit(limit).Offset((page - 1) * limit).All(ctx)
 	if err != nil {
-		return Page{}, err
+		return ListResponse{}, err
 	}
 	total, err := query.Count(ctx)
 	if err != nil {
-		return Page{}, err
+		return ListResponse{}, err
 	}
 	if items == nil {
 		items = []{{.Names.Model}}{}
 	}
-	return Page{Items: items, Total: total}, nil
+	return ListResponse{Items: items, Total: total}, nil
 }
 
 // Find returns one {{.Names.ModelWords}}, or sql.ErrNotFound.

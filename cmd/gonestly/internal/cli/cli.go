@@ -29,7 +29,8 @@ import (
 
 // Execute runs the command line and returns the exit code.
 func Execute(args []string, stdout, stderr io.Writer) int {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// A closed terminal sends SIGHUP; the dev server must still stop the application it runs.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 	root := newRoot(stdout, stderr)
 	root.SetArgs(args)
@@ -222,19 +223,31 @@ so providers such as the database connect as usual.`,
 }
 
 func inspect(ctx context.Context, root, main, mode string, stderr io.Writer) ([]byte, error) {
+	// The result goes to a file, so that whatever the application prints cannot corrupt it.
+	file, err := os.CreateTemp("", "gonestly-inspect-*.json")
+	if err != nil {
+		return nil, err
+	}
+	_ = file.Close()
+	defer os.Remove(file.Name())
+
 	cmd := exec.CommandContext(ctx, "go", "run", "./"+strings.TrimPrefix(main, "./"))
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), gonestly.InspectEnv+"="+mode)
+	cmd.Env = append(os.Environ(), gonestly.InspectEnv+"="+mode, gonestly.InspectOutputEnv+"="+file.Name())
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	if err := cmd.Run(); err != nil {
 		_, _ = stderr.Write(errOut.Bytes())
 		return nil, fmt.Errorf("running the application: %w", err)
 	}
-	if out.Len() == 0 {
-		return nil, errors.New("the application printed nothing; does main call app.Run?")
+	data, err := os.ReadFile(file.Name())
+	if err != nil {
+		return nil, err
 	}
-	return out.Bytes(), nil
+	if len(data) == 0 {
+		return nil, errors.New("the application reported nothing; does main call app.Run?")
+	}
+	return data, nil
 }
 
 func printRoutes(w io.Writer, data []byte) error {

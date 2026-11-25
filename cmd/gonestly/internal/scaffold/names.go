@@ -2,9 +2,35 @@ package scaffold
 
 import (
 	"fmt"
+	"go/token"
+	"slices"
 	"strings"
 	"unicode"
 )
+
+// templatePackages are imported by the generated code, so a package cannot share their name.
+var templatePackages = []string{
+	"context", "filepath", "gonestly", "gonestlytest", "http", "main", "migrations", "slog", "sql",
+	"strings", "testing", "time", "validator",
+}
+
+// templateTypes are declared in every generated resource, so a model cannot share their name.
+var templateTypes = []string{
+	"Controller", "CreateRequest", "FindRequest", "ListRequest", "ListResponse", "Module", "Service", "UpdateRequest",
+}
+
+// checkGenerated reports a name that would not compile as generated code.
+func (n Names) checkGenerated(kind string) error {
+	switch {
+	case token.IsKeyword(n.Package):
+		return fmt.Errorf("%q is a Go keyword and cannot name a package; choose another name", n.Package)
+	case slices.Contains(templatePackages, n.Package):
+		return fmt.Errorf("the package %q would clash with a package the generated code imports; choose another name", n.Package)
+	case kind == "resource" && slices.Contains(templateTypes, n.Model):
+		return fmt.Errorf("the model %s would clash with the %s type of the generated resource; choose another name", n.Model, n.Model)
+	}
+	return nil
+}
 
 // Names are the spellings of one feature name, such as "order-items", in generated code.
 type Names struct {

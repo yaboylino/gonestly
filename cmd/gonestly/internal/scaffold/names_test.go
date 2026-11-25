@@ -24,3 +24,22 @@ func TestNames(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckGenerated(t *testing.T) {
+	for name, kind := range map[string]string{"type": "module", "sql": "service", "pages": "resource", "products": "resource", "services": "controller"} {
+		names, err := NewNames(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantErr := name == "type" || name == "sql"
+		if err := names.checkGenerated(kind); (err != nil) != wantErr {
+			t.Errorf("checkGenerated(%s %s) = %v", kind, name, err)
+		}
+	}
+	for _, name := range []string{"services", "modules", "controllers"} {
+		names, _ := NewNames(name)
+		if err := names.checkGenerated("resource"); err == nil {
+			t.Errorf("a resource named %s would not compile, but was accepted", name)
+		}
+	}
+}

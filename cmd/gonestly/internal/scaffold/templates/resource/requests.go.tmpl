@@ -22,8 +22,8 @@ type UpdateRequest struct {
 	Name string `json:"name" validate:"required,max=200" doc:"The name of the {{.Names.ModelWords}}."`
 }
 
-// Page is one page of {{.Names.Words}} and the total number.
-type Page struct {
+// ListResponse is one page of {{.Names.Words}} and the total number.
+type ListResponse struct {
 	Items []{{.Names.Model}} `json:"items"`
 	Total int64 `json:"total"`
 }

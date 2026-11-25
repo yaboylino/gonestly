@@ -27,7 +27,7 @@ func (c *Controller) Routes(r *gonestly.Router) {
 }
 
 // List returns a page of {{.Names.Words}}.
-func (c *Controller) List(ctx context.Context, req ListRequest) (Page, error) {
+func (c *Controller) List(ctx context.Context, req ListRequest) (ListResponse, error) {
 	return c.service.List(ctx, req.Page, req.Limit)
 }
 

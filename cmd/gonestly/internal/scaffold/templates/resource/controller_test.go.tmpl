@@ -37,7 +37,7 @@ func TestLifecycle(t *testing.T) {
 		t.Fatalf("created = %+v", created)
 	}
 
-	var page {{.Names.Package}}.Page
+	var page {{.Names.Package}}.ListResponse
 	app.Get("/{{.Names.Kebab}}").ExpectStatus(http.StatusOK).JSON(&page)
 	if page.Total != 1 || len(page.Items) != 1 {
 		t.Errorf("page = %+v", page)

@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
 	"os"
 
 	"github.com/yaboylino/gonestly"
@@ -17,12 +17,12 @@ import (
 
 func main() {
 	application, err := gonestly.New(app.Module)
-	if err != nil {
-		slog.Error("the application cannot be built", "error", err)
-		os.Exit(1)
+	if err == nil {
+		err = application.Run(context.Background())
 	}
-	if err := application.Run(context.Background()); err != nil {
-		slog.Error("the application stopped with an error", "error", err)
+	if err != nil {
+		// Printed as it is: a build error lists every problem on a line of its own.
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }

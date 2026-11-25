@@ -388,6 +388,7 @@ func (s *Server) start() error {
 	cmd.Stdout = s.opts.Stdout
 	cmd.Stderr = s.opts.Stderr
 	cmd.Stdin = nil
+	isolate(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -427,14 +428,14 @@ func (s *Server) stop() bool {
 	if cmd == nil {
 		return false
 	}
-	if err := cmd.Process.Signal(os.Interrupt); err != nil {
-		_ = cmd.Process.Kill()
+	if err := interrupt(cmd); err != nil {
+		kill(cmd)
 	}
 	select {
 	case <-exited:
 	case <-time.After(s.opts.StopTimeout):
 		s.opts.Printer.Failure("the application did not stop within %s, so it was killed", s.opts.StopTimeout)
-		_ = cmd.Process.Kill()
+		kill(cmd)
 		<-exited
 	}
 	return true
