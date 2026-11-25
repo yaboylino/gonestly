@@ -28,7 +28,7 @@ and runs your code, while staying plain, idiomatic Go.
 
 ```go
 // users/module.go
-var Module = gonestly.Module{
+var Module = &gonestly.Module{
 	Name:        "users",
 	Imports:     gonestly.Imports(database.Module),
 	Providers:   gonestly.Providers(NewService, NewRepository),
@@ -45,6 +45,21 @@ func (c *Controller) Routes(r *gonestly.Router) {
 
 func (c *Controller) FindOne(ctx context.Context, req FindOneRequest) (*User, error) {
 	return c.users.FindByID(ctx, req.ID)
+}
+```
+
+Typed configuration from environment variables and `.env` files, checked when the application
+starts:
+
+```go
+type Config struct {
+	Port        int    `default:"3000"`
+	DatabaseURL string `env:"DATABASE_URL,required"`
+}
+
+var AppModule = &gonestly.Module{
+	Name:    "app",
+	Imports: gonestly.Imports(config.Module[Config](config.Options{}), users.Module),
 }
 ```
 
