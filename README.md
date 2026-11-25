@@ -3,12 +3,15 @@
 [![CI](https://github.com/yaboylino/gonestly/actions/workflows/ci.yml/badge.svg)](https://github.com/yaboylino/gonestly/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/yaboylino/gonestly.svg)](https://pkg.go.dev/github.com/yaboylino/gonestly)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-gonestly-fa7807.svg)](https://yaboylino.github.io/gonestly-docs)
 
 A modular application framework for Go, inspired by [NestJS](https://nestjs.com). Gonestly gives you
 modules, dependency injection, typed HTTP handlers, a type-safe SQL layer and a CLI that generates
 and runs your code, while staying plain, idiomatic Go.
 
 > **Status:** in active development. The API below is a preview and will change before `v0.1.0`.
+
+**[Read the documentation](https://yaboylino.github.io/gonestly-docs)** in English or Dutch.
 
 ## Why Gonestly
 
