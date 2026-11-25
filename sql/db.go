@@ -1,0 +1,198 @@
+package sql
+
+import (
+	"context"
+	stdsql "database/sql"
+	"errors"
+	"fmt"
+	"io/fs"
+	"log/slog"
+	"strings"
+	"time"
+)
+
+// Options configures a database connection.
+type Options struct {
+	// Driver is the name of a registered database/sql driver, such as "pgx" or "sqlite".
+	// Import the driver package, for example _ "github.com/jackc/pgx/v5/stdlib".
+	Driver string
+	// DSN is the connection string for the driver.
+	DSN string
+	// Dialect is inferred from Driver for the drivers above; set it for other driver names.
+	Dialect Dialect
+	// MaxOpenConns, MaxIdleConns, ConnMaxLifetime and ConnMaxIdleTime tune the connection pool;
+	// zero keeps the database/sql defaults.
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
+	// Migrations holds migration files that Module applies when the application starts.
+	Migrations fs.FS
+	// Logger receives every query at debug level; Module uses the application's logger.
+	Logger *slog.Logger
+}
+
+// DB is a database connection pool with a dialect. It is safe for concurrent use.
+type DB struct {
+	std     *stdsql.DB
+	dialect Dialect
+	logger  *slog.Logger
+}
+
+// Open connects to the database and checks the connection.
+func Open(ctx context.Context, opts Options) (*DB, error) {
+	dialect := opts.Dialect
+	if dialect == nil {
+		dialect = dialectFor(opts.Driver)
+	}
+	if dialect == nil {
+		return nil, fmt.Errorf("sql: unknown dialect for the driver %q; set Options.Dialect", opts.Driver)
+	}
+	std, err := stdsql.Open(opts.Driver, opts.DSN)
+	if err != nil {
+		if strings.Contains(err.Error(), "unknown driver") {
+			return nil, fmt.Errorf("sql: the driver %q is not registered; import it, for example _ \"github.com/jackc/pgx/v5/stdlib\" for pgx or _ \"modernc.org/sqlite\" for sqlite: %w", opts.Driver, err)
+		}
+		return nil, fmt.Errorf("sql: opening the database: %w", err)
+	}
+	if opts.MaxOpenConns != 0 {
+		std.SetMaxOpenConns(opts.MaxOpenConns)
+	}
+	if opts.MaxIdleConns != 0 {
+		std.SetMaxIdleConns(opts.MaxIdleConns)
+	}
+	if opts.ConnMaxLifetime != 0 {
+		std.SetConnMaxLifetime(opts.ConnMaxLifetime)
+	}
+	if opts.ConnMaxIdleTime != 0 {
+		std.SetConnMaxIdleTime(opts.ConnMaxIdleTime)
+	}
+	if err := std.PingContext(ctx); err != nil {
+		_ = std.Close()
+		return nil, fmt.Errorf("sql: connecting to the database: %w", err)
+	}
+	return &DB{std: std, dialect: dialect, logger: opts.Logger}, nil
+}
+
+// New wraps an existing connection pool, for example one opened by another library.
+func New(std *stdsql.DB, dialect Dialect) *DB {
+	return &DB{std: std, dialect: dialect}
+}
+
+// Std returns the underlying *sql.DB from database/sql.
+func (db *DB) Std() *stdsql.DB { return db.std }
+
+// Dialect returns the dialect of the database.
+func (db *DB) Dialect() Dialect { return db.dialect }
+
+// Close closes the connection pool.
+func (db *DB) Close() error { return db.std.Close() }
+
+// OnStop closes the connection pool when the application stops.
+func (db *DB) OnStop(context.Context) error { return db.Close() }
+
+// Exec runs a statement, such as an insert or update, and returns its result.
+func (db *DB) Exec(ctx context.Context, query string, args ...any) (stdsql.Result, error) {
+	query, args, err := rebind(db.dialect, query, args)
+	if err != nil {
+		return nil, err
+	}
+	start := time.Now()
+	result, err := db.conn(ctx).ExecContext(ctx, query, args...)
+	db.log(ctx, query, start, err)
+	return result, err
+}
+
+func (db *DB) query(ctx context.Context, query string, args []any) (*stdsql.Rows, error) {
+	query, args, err := rebind(db.dialect, query, args)
+	if err != nil {
+		return nil, err
+	}
+	start := time.Now()
+	rows, err := db.conn(ctx).QueryContext(ctx, query, args...)
+	db.log(ctx, query, start, err)
+	return rows, err
+}
+
+func (db *DB) log(ctx context.Context, query string, start time.Time, err error) {
+	if db.logger == nil || !db.logger.Enabled(ctx, slog.LevelDebug) {
+		return
+	}
+	db.logger.DebugContext(ctx, "sql query", slog.String("query", query), slog.Duration("duration", time.Since(start)), slog.Any("error", err))
+}
+
+type executor interface {
+	ExecContext(ctx context.Context, query string, args ...any) (stdsql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*stdsql.Rows, error)
+}
+
+type txKey struct{}
+
+type txState struct {
+	db    *DB
+	tx    *stdsql.Tx
+	depth int
+}
+
+// conn returns the transaction in ctx when it belongs to this database, or the pool.
+func (db *DB) conn(ctx context.Context) executor {
+	if state, ok := ctx.Value(txKey{}).(*txState); ok && state.db == db {
+		return state.tx
+	}
+	return db.std
+}
+
+// Transaction runs fn in a transaction that commits when fn returns nil and rolls back when it
+// returns an error or panics. Queries that use the context passed to fn take part in it. A
+// nested call runs in a savepoint, so its failure undoes only its own work.
+//
+// Do not run queries on the transaction's context from several goroutines at once.
+func (db *DB) Transaction(ctx context.Context, fn func(ctx context.Context) error) (err error) {
+	if state, ok := ctx.Value(txKey{}).(*txState); ok && state.db == db {
+		return db.savepoint(ctx, state, fn)
+	}
+	tx, err := db.std.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("sql: beginning a transaction: %w", err)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			_ = tx.Rollback()
+			panic(r)
+		}
+	}()
+	if err := fn(context.WithValue(ctx, txKey{}, &txState{db: db, tx: tx})); err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return errors.Join(err, fmt.Errorf("sql: rolling back: %w", rollbackErr))
+		}
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("sql: committing: %w", err)
+	}
+	return nil
+}
+
+func (db *DB) savepoint(ctx context.Context, parent *txState, fn func(ctx context.Context) error) error {
+	state := &txState{db: db, tx: parent.tx, depth: parent.depth + 1}
+	name := fmt.Sprintf("gonestly_savepoint_%d", state.depth)
+	if _, err := parent.tx.ExecContext(ctx, "SAVEPOINT "+name); err != nil {
+		return fmt.Errorf("sql: creating a savepoint: %w", err)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			_, _ = parent.tx.ExecContext(context.WithoutCancel(ctx), "ROLLBACK TO SAVEPOINT "+name)
+			panic(r)
+		}
+	}()
+	if err := fn(context.WithValue(ctx, txKey{}, state)); err != nil {
+		if _, rollbackErr := parent.tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT "+name); rollbackErr != nil {
+			return errors.Join(err, fmt.Errorf("sql: rolling back to a savepoint: %w", rollbackErr))
+		}
+		return err
+	}
+	if _, err := parent.tx.ExecContext(ctx, "RELEASE SAVEPOINT "+name); err != nil {
+		return fmt.Errorf("sql: releasing a savepoint: %w", err)
+	}
+	return nil
+}

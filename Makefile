@@ -4,10 +4,14 @@ GOVULNCHECK_VERSION := v1.10.0
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
-# Every Go module in the repository; the validator has its own because of its dependency.
-MODULES := . validator
+# Every Go module in the repository; integrations have their own because of their dependencies.
+MODULES := . validator sql
 
-.PHONY: check test cover lint fmt vuln tidy
+# The SQL tests also run against PostgreSQL when GONESTLY_TEST_POSTGRES is set; `make postgres`
+# starts a matching database in Docker.
+POSTGRES_DSN := postgres://postgres:gonestly@127.0.0.1:55432/gonestly?sslmode=disable
+
+.PHONY: check test test-postgres postgres cover lint fmt vuln tidy
 
 # check: run every check that CI runs
 check: tidy lint test vuln
@@ -15,6 +19,14 @@ check: tidy lint test vuln
 # test: run the tests with the race detector
 test:
 	@for m in $(MODULES); do (cd $$m && go test -race -shuffle=on ./...) || exit 1; done
+
+# test-postgres: run the tests, including the SQL tests against the database of `make postgres`
+test-postgres:
+	GONESTLY_TEST_POSTGRES="$(POSTGRES_DSN)" $(MAKE) test
+
+# postgres: start a PostgreSQL container for the SQL tests
+postgres:
+	docker run -d --rm --name gonestly-test-pg -e POSTGRES_PASSWORD=gonestly -e POSTGRES_DB=gonestly -p 55432:5432 postgres:17-alpine
 
 # cover: run the tests and open the coverage report
 cover:
