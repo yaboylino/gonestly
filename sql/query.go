@@ -11,7 +11,7 @@ func Query[T any](ctx context.Context, db *DB, query string, args ...any) ([]T, 
 	if err != nil {
 		return nil, err
 	}
-	return scanRows[T](rows)
+	return scanRows[T](db, rows)
 }
 
 // QueryOne runs a query that returns exactly one row. It returns ErrNotFound for no rows and

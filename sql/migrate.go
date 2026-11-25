@@ -18,7 +18,11 @@ import (
 
 const migrationsTable = "gonestly_migrations"
 
-var migrationFile = regexp.MustCompile(`^(\d+)_([a-z0-9_]+)\.(up|down)\.sql$`)
+var (
+	migrationFile = regexp.MustCompile(`^(\d+)_([a-z0-9_]+)\.(up|down)\.sql$`)
+	// noTransaction is the comment that runs a migration file outside a transaction.
+	noTransaction = regexp.MustCompile(`(?m)^--\s*gonestly:no-transaction\s*$`)
+)
 
 // Migration is one versioned change to the schema, read from a pair of files such as
 // 0001_create_users.up.sql and 0001_create_users.down.sql.
@@ -38,6 +42,10 @@ type MigrationStatus struct {
 
 // Migrator applies migrations from a file system, usually one embedded with go:embed. Each
 // migration runs in its own transaction and is recorded in the gonestly_migrations table.
+//
+// A file with the comment line "-- gonestly:no-transaction" runs outside a transaction, one
+// statement at a time, for statements such as CREATE INDEX CONCURRENTLY in PostgreSQL. When
+// such a migration fails halfway, the statements before the failure stay applied.
 type Migrator struct {
 	db         *DB
 	migrations []Migration
@@ -124,10 +132,7 @@ func (m *Migrator) Up(ctx context.Context) ([]Migration, error) {
 			return err
 		}
 		for _, migration := range pending {
-			err := m.db.Transaction(ctx, func(ctx context.Context) error {
-				if _, err := m.db.conn(ctx).ExecContext(ctx, migration.up); err != nil {
-					return err
-				}
+			err := m.run(ctx, migration.up, func(ctx context.Context) error {
 				_, err := m.db.Exec(ctx, "INSERT INTO "+migrationsTable+" (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)",
 					migration.Version, migration.Name, checksum(migration.up), time.Now().UTC())
 				return err
@@ -156,10 +161,7 @@ func (m *Migrator) Down(ctx context.Context) (*Migration, error) {
 			if strings.TrimSpace(migration.down) == "" {
 				return fmt.Errorf("sql: migration %d_%s has no down file", migration.Version, migration.Name)
 			}
-			err := m.db.Transaction(ctx, func(ctx context.Context) error {
-				if _, err := m.db.conn(ctx).ExecContext(ctx, migration.down); err != nil {
-					return err
-				}
+			err := m.run(ctx, migration.down, func(ctx context.Context) error {
 				_, err := m.db.Exec(ctx, "DELETE FROM "+migrationsTable+" WHERE version = ?", migration.Version)
 				return err
 			})
@@ -172,6 +174,25 @@ func (m *Migrator) Down(ctx context.Context) (*Migration, error) {
 		return nil
 	})
 	return reverted, err
+}
+
+// run executes a migration script and records it: together in one transaction, or statement
+// by statement when the script asks to run outside one.
+func (m *Migrator) run(ctx context.Context, script string, record func(ctx context.Context) error) error {
+	if !noTransaction.MatchString(script) {
+		return m.db.Transaction(ctx, func(ctx context.Context) error {
+			if _, err := m.db.conn(ctx).ExecContext(ctx, script); err != nil {
+				return err
+			}
+			return record(ctx)
+		})
+	}
+	for _, statement := range m.db.dialect.statements(script) {
+		if _, err := m.db.conn(ctx).ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return record(ctx)
 }
 
 // Status lists every migration and whether it has been applied.

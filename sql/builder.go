@@ -78,7 +78,7 @@ func (q *Builder[T]) All(ctx context.Context) ([]T, error) {
 	if err != nil {
 		return nil, err
 	}
-	return scanRows[T](rows)
+	return scanRows[T](q.db, rows)
 }
 
 // First returns the first matching row, or ErrNotFound.
@@ -107,7 +107,7 @@ func (q *Builder[T]) Count(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	counts, err := scanRows[int64](rows)
+	counts, err := scanRows[int64](q.db, rows)
 	if err != nil {
 		return 0, err
 	}
@@ -128,7 +128,7 @@ func (q *Builder[T]) Exists(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	found, err := scanRows[int64](rows)
+	found, err := scanRows[int64](q.db, rows)
 	return len(found) > 0, err
 }
 

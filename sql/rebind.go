@@ -132,3 +132,48 @@ func dollarQuoteEnd(query string, start int) (int, bool) {
 	}
 	return start + len(tag) + end + len(tag), true
 }
+
+// splitStatements splits a script at the semicolons outside quoted text, comments and dollar
+// quoted strings, and drops what holds no SQL.
+func splitStatements(d Dialect, script string) []string {
+	var statements []string
+	start, hasSQL := 0, false
+	flush := func(end int) {
+		if statement := strings.TrimSpace(script[start:end]); statement != "" && hasSQL {
+			statements = append(statements, statement)
+		}
+		start, hasSQL = end+1, false
+	}
+	for i := 0; i < len(script); i++ {
+		c := script[i]
+		switch {
+		case c == '\'' || c == '"':
+			i = closingQuote(script, i) - 1
+			hasSQL = true
+		case c == '-' && i+1 < len(script) && script[i+1] == '-':
+			end := strings.IndexByte(script[i:], '\n')
+			if end < 0 {
+				end = len(script) - i
+			}
+			i += end - 1
+		case c == '/' && i+1 < len(script) && script[i+1] == '*':
+			end := strings.Index(script[i+2:], "*/")
+			if end < 0 {
+				i = len(script)
+				continue
+			}
+			i += end + 3
+		case c == '$' && d == Postgres:
+			if end, ok := dollarQuoteEnd(script, i); ok {
+				i = end - 1
+			}
+			hasSQL = true
+		case c == ';':
+			flush(i)
+		case c != ' ' && c != '\t' && c != '\n' && c != '\r':
+			hasSQL = true
+		}
+	}
+	flush(len(script))
+	return statements
+}

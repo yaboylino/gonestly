@@ -152,5 +152,5 @@ func (r *Repository[T, ID]) queryInto(ctx context.Context, b *sqlBuilder, v refl
 	if err != nil {
 		return false, err
 	}
-	return scanInto(rows, r.model, v)
+	return scanInto(r.db, rows, r.model, v)
 }

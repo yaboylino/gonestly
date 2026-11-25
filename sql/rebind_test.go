@@ -77,3 +77,23 @@ func TestBuilderArgumentsAreNotExpanded(t *testing.T) {
 		t.Errorf("args = %#v, want %#v", args, want)
 	}
 }
+
+func TestSplitStatements(t *testing.T) {
+	script := `-- gonestly:no-transaction
+CREATE INDEX CONCURRENTLY a ON t (x); -- the first
+/* a ; in a comment */
+INSERT INTO t (x) VALUES ('semi;colon');
+CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END; $body$ LANGUAGE plpgsql;
+
+-- nothing after this
+;
+`
+	want := []string{
+		"-- gonestly:no-transaction\nCREATE INDEX CONCURRENTLY a ON t (x)",
+		"-- the first\n/* a ; in a comment */\nINSERT INTO t (x) VALUES ('semi;colon')",
+		"CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END; $body$ LANGUAGE plpgsql",
+	}
+	if got := splitStatements(Postgres, script); !reflect.DeepEqual(got, want) {
+		t.Errorf("statements = %q\nwant %q", got, want)
+	}
+}

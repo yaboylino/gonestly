@@ -3,6 +3,7 @@ package sql
 import (
 	"context"
 	stdsql "database/sql"
+	"errors"
 	"strconv"
 	"strings"
 )
@@ -17,6 +18,12 @@ type Dialect interface {
 	Quote(identifier string) string
 
 	lockMigrations(ctx context.Context, conn *stdsql.Conn) (unlock func(), err error)
+	isUniqueViolation(err error) bool
+	// readOnlySession returns the statements that switch a connection to read only and back,
+	// for databases whose driver does not make a read only transaction read only by itself.
+	readOnlySession() (on, off string)
+	// statements splits a script into what must be sent one by one to run outside a transaction.
+	statements(script string) []string
 }
 
 var (
@@ -44,6 +51,17 @@ func (postgresDialect) lockMigrations(ctx context.Context, conn *stdsql.Conn) (f
 	}, nil
 }
 
+// The drivers are recognized by their SQLSTATE method, so none of them has to be imported.
+func (postgresDialect) isUniqueViolation(err error) bool {
+	var state interface{ SQLState() string }
+	return errors.As(err, &state) && state.SQLState() == "23505"
+}
+
+func (postgresDialect) readOnlySession() (on, off string) { return "", "" }
+
+// PostgreSQL runs several statements in one message as a single transaction.
+func (d postgresDialect) statements(script string) []string { return splitStatements(d, script) }
+
 type sqliteDialect struct{}
 
 func (sqliteDialect) Name() string           { return "sqlite" }
@@ -54,6 +72,25 @@ func (sqliteDialect) Quote(id string) string { return quoteIdentifier(id) }
 func (sqliteDialect) lockMigrations(context.Context, *stdsql.Conn) (func(), error) {
 	return func() {}, nil
 }
+
+const (
+	sqliteConstraintPrimaryKey = 1555
+	sqliteConstraintUnique     = 2067
+)
+
+func (sqliteDialect) isUniqueViolation(err error) bool {
+	var coded interface{ Code() int }
+	if errors.As(err, &coded) {
+		return coded.Code() == sqliteConstraintUnique || coded.Code() == sqliteConstraintPrimaryKey
+	}
+	return strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+func (sqliteDialect) readOnlySession() (on, off string) {
+	return "PRAGMA query_only = ON", "PRAGMA query_only = OFF"
+}
+
+func (sqliteDialect) statements(script string) []string { return []string{script} }
 
 // quoteIdentifier quotes each part of a possibly qualified name, such as users.email.
 func quoteIdentifier(id string) string {

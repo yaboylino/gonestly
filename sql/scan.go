@@ -8,7 +8,7 @@ import (
 
 // scanRows reads every row into a T. A struct T is filled by column name; any other T is
 // read from the single column of the result.
-func scanRows[T any](rows *stdsql.Rows) ([]T, error) {
+func scanRows[T any](db *DB, rows *stdsql.Rows) ([]T, error) {
 	defer rows.Close()
 	columns, err := rows.Columns()
 	if err != nil {
@@ -54,18 +54,18 @@ func scanRows[T any](rows *stdsql.Rows) ([]T, error) {
 		}
 		result = append(result, v)
 	}
-	return result, rows.Err()
+	return result, db.wrap(rows.Err())
 }
 
 // scanInto fills the struct v with the single row of rows, for RETURNING clauses.
-func scanInto(rows *stdsql.Rows, m *model, v reflect.Value) (bool, error) {
+func scanInto(db *DB, rows *stdsql.Rows, m *model, v reflect.Value) (bool, error) {
 	defer rows.Close()
 	columns, err := rows.Columns()
 	if err != nil {
 		return false, err
 	}
 	if !rows.Next() {
-		return false, rows.Err()
+		return false, db.wrap(rows.Err())
 	}
 	dest := make([]any, len(columns))
 	for i, column := range columns {
@@ -78,5 +78,5 @@ func scanInto(rows *stdsql.Rows, m *model, v reflect.Value) (bool, error) {
 	if err := rows.Scan(dest...); err != nil {
 		return false, fmt.Errorf("sql: scanning a row into %s: %w", m.typ, err)
 	}
-	return true, rows.Err()
+	return true, db.wrap(rows.Err())
 }

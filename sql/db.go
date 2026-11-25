@@ -100,7 +100,7 @@ func (db *DB) Exec(ctx context.Context, query string, args ...any) (stdsql.Resul
 	start := time.Now()
 	result, err := db.conn(ctx).ExecContext(ctx, query, args...)
 	db.log(ctx, query, start, err)
-	return result, err
+	return result, db.wrap(err)
 }
 
 func (db *DB) query(ctx context.Context, query string, args []any) (*stdsql.Rows, error) {
@@ -111,7 +111,7 @@ func (db *DB) query(ctx context.Context, query string, args []any) (*stdsql.Rows
 	start := time.Now()
 	rows, err := db.conn(ctx).QueryContext(ctx, query, args...)
 	db.log(ctx, query, start, err)
-	return rows, err
+	return rows, db.wrap(err)
 }
 
 func (db *DB) log(ctx context.Context, query string, start time.Time, err error) {
@@ -167,26 +167,91 @@ func (db *DB) conn(ctx context.Context) executor {
 	return db.std
 }
 
-func (db *DB) begin(ctx context.Context) (*stdsql.Tx, error) {
-	if conn := db.pinned(ctx); conn != nil {
-		return conn.BeginTx(ctx, nil)
+// begin starts a transaction and returns what to call once it has ended.
+func (db *DB) begin(ctx context.Context, opts *stdsql.TxOptions) (*stdsql.Tx, func(), error) {
+	conn := db.pinned(ctx)
+	on, off := db.dialect.readOnlySession()
+	if opts == nil || !opts.ReadOnly || on == "" {
+		if conn != nil {
+			tx, err := conn.BeginTx(ctx, opts)
+			return tx, func() {}, err
+		}
+		tx, err := db.std.BeginTx(ctx, opts)
+		return tx, func() {}, err
 	}
-	return db.std.BeginTx(ctx, nil)
+
+	// The setting belongs to the connection, so the transaction keeps one and resets it after.
+	release := func() {}
+	if conn == nil {
+		var err error
+		if conn, err = db.std.Conn(ctx); err != nil {
+			return nil, nil, err
+		}
+		release = func() { _ = conn.Close() }
+	}
+	if _, err := conn.ExecContext(ctx, on); err != nil {
+		release()
+		return nil, nil, err
+	}
+	end := func() {
+		_, _ = conn.ExecContext(context.WithoutCancel(ctx), off)
+		release()
+	}
+	tx, err := conn.BeginTx(ctx, opts)
+	if err != nil {
+		end()
+		return nil, nil, err
+	}
+	return tx, end, nil
+}
+
+// TxOption changes how Transaction begins a transaction.
+type TxOption func(*stdsql.TxOptions)
+
+// The isolation levels for Isolation; which ones exist depends on the database.
+const (
+	LevelReadCommitted  = stdsql.LevelReadCommitted
+	LevelRepeatableRead = stdsql.LevelRepeatableRead
+	LevelSerializable   = stdsql.LevelSerializable
+)
+
+// Isolation sets the isolation level of a transaction, such as LevelSerializable.
+func Isolation(level stdsql.IsolationLevel) TxOption {
+	return func(o *stdsql.TxOptions) { o.Isolation = level }
+}
+
+// ReadOnly makes a transaction read only, so the database rejects every write in it.
+func ReadOnly() TxOption {
+	return func(o *stdsql.TxOptions) { o.ReadOnly = true }
 }
 
 // Transaction runs fn in a transaction that commits when fn returns nil and rolls back when it
 // returns an error or panics. Queries that use the context passed to fn take part in it. A
 // nested call runs in a savepoint, so its failure undoes only its own work.
 //
+// Options such as ReadOnly and Isolation apply to the outermost transaction only; a nested
+// call with options returns an error, because a savepoint cannot change them.
+//
 // Do not run queries on the transaction's context from several goroutines at once.
-func (db *DB) Transaction(ctx context.Context, fn func(ctx context.Context) error) (err error) {
+func (db *DB) Transaction(ctx context.Context, fn func(ctx context.Context) error, opts ...TxOption) (err error) {
 	if state, ok := ctx.Value(txKey{}).(*txState); ok && state.db == db {
+		if len(opts) > 0 {
+			return errors.New("sql: a nested transaction cannot set options; pass them to the outermost Transaction")
+		}
 		return db.savepoint(ctx, state, fn)
 	}
-	tx, err := db.begin(ctx)
+	var txOptions *stdsql.TxOptions
+	if len(opts) > 0 {
+		txOptions = &stdsql.TxOptions{}
+		for _, opt := range opts {
+			opt(txOptions)
+		}
+	}
+	tx, end, err := db.begin(ctx, txOptions)
 	if err != nil {
 		return fmt.Errorf("sql: beginning a transaction: %w", err)
 	}
+	defer end()
 	defer func() {
 		if r := recover(); r != nil {
 			_ = tx.Rollback()
@@ -200,7 +265,7 @@ func (db *DB) Transaction(ctx context.Context, fn func(ctx context.Context) erro
 		return err
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("sql: committing: %w", err)
+		return fmt.Errorf("sql: committing: %w", db.wrap(err))
 	}
 	return nil
 }
