@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 
 	"github.com/yaboylino/gonestly"
@@ -45,7 +46,7 @@ func ExampleGet() {
 
 	for _, path := range []string{"/greet/Ada", "/greet/Ada?lang=nl", "/greet"} {
 		recorder := httptest.NewRecorder()
-		app.Handler().ServeHTTP(recorder, httptest.NewRequest("GET", path, nil))
+		app.Handler().ServeHTTP(recorder, httptest.NewRequestWithContext(context.Background(), http.MethodGet, path, nil))
 		fmt.Print(recorder.Code, " ", recorder.Body.String())
 	}
 	fmt.Println()
