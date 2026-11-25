@@ -39,3 +39,10 @@ All notable changes to this project are documented in this file. The format is b
   with Swagger UI and configured with `OpenAPIConfig`.
 - The route options `Summary`, `Description`, `Tags`, `OperationID` and `Deprecated`, and
   `SecuredGuard` for guards that describe how clients authenticate.
+- The `gonestly` CLI: `new` creates a project that runs immediately, `generate` creates
+  resources, modules, controllers, services, guards, interceptors and typed columns and
+  registers them, `dev` rebuilds and restarts the application on every change and stops it
+  when a change breaks the build, vet or tests, `migrate` applies, reverts, lists and creates
+  migrations, and `routes` and `openapi` inspect the application.
+- `InspectEnv`, which makes `App.Run` print the routes or the OpenAPI document instead of
+  serving.

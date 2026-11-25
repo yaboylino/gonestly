@@ -101,7 +101,7 @@ migrations are plain SQL files applied when the application starts.
 Developing with the CLI:
 
 ```sh
-gonestly new shop
+gonestly new shop --database postgres
 cd shop
 gonestly generate resource products
 gonestly dev
@@ -113,13 +113,17 @@ the application is restarted gracefully. When something fails, the application i
 every problem is listed with its file, line and message, so a broken change never looks like it
 works. The application starts again as soon as the problems are fixed.
 
+The CLI also generates modules, controllers, services, guards, interceptors and the typed
+columns of your models, manages migrations, and lists the routes and the OpenAPI document of
+your application.
+
 ## Roadmap
 
 - [x] Core: modules, dependency injection, lifecycle hooks, configuration and logging
 - [x] HTTP: router, typed handlers, binding, validation, guards, interceptors and error handling
 - [x] SQL: repositories, typed query builder, transactions and migrations for PostgreSQL and SQLite
 - [x] OpenAPI: a document and Swagger UI generated from every route
-- [ ] CLI: `new`, `generate`, `dev` with live rebuild and restart, `migrate` and `routes`
+- [x] CLI: `new`, `generate`, `dev` with live rebuild and restart, `migrate`, `routes` and `openapi`
 - [x] Documentation site in English and Dutch
 - [ ] MySQL support and examples
 - [ ] First release: `v0.1.0`
