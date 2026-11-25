@@ -46,10 +46,19 @@ func (c *Controller) Routes(r *gonestly.Router) {
 	gonestly.Post(r, "/", c.Create)
 }
 
+type FindOneRequest struct {
+	ID     string `path:"id"`
+	Fields string `query:"fields"`
+}
+
 func (c *Controller) FindOne(ctx context.Context, req FindOneRequest) (*User, error) {
 	return c.users.FindByID(ctx, req.ID)
 }
 ```
+
+The request is bound from the path, query, headers and JSON body, validated, and the result is
+sent as JSON. Errors such as `gonestly.NotFound("user %s does not exist", id)` become problem
+details (RFC 9457).
 
 Typed configuration from environment variables and `.env` files, checked when the application
 starts:
@@ -93,11 +102,12 @@ works. The application starts again as soon as the problems are fixed.
 
 ## Roadmap
 
-- [ ] Core: modules, dependency injection, lifecycle hooks, configuration and logging
-- [ ] HTTP: router, typed handlers, binding, validation, guards, interceptors and error handling
+- [x] Core: modules, dependency injection, lifecycle hooks, configuration and logging
+- [x] HTTP: router, typed handlers, binding, validation, guards, interceptors and error handling
 - [ ] SQL: repositories, typed query builder, transactions and migrations for PostgreSQL, SQLite and MySQL
 - [ ] CLI: `new`, `generate`, `dev` with live rebuild and restart, `migrate` and `routes`
-- [ ] OpenAPI generation, documentation site and examples
+- [x] Documentation site in English and Dutch
+- [ ] OpenAPI generation and examples
 - [ ] First release: `v0.1.0`
 
 ## Contributing

@@ -18,3 +18,14 @@ All notable changes to this project are documented in this file. The format is b
 - `Override` to replace providers in tests, and `Resolve` to get a provider from a running
   application.
 - The `config` package: typed configuration from environment variables and dotenv files.
+- Controllers with typed handlers registered with `Get`, `Post`, `Put`, `Patch`, `Delete` and
+  `Handle`, and a router with prefixes, groups, guards, interceptors and net/http middleware.
+- Request binding from path values, query parameters, headers and the JSON body, with checks
+  at startup that every path value exists in its route.
+- Validation through a `Validate` method on the request, or with struct tags through the new
+  `validator` module.
+- HTTP errors such as `NotFound` and `Invalid`, rendered as problem details (RFC 9457); other
+  errors become a 500 whose cause is logged but never sent.
+- An HTTP server with secure timeouts and a body size limit, configured with `ServerConfig` and
+  shut down gracefully with the application.
+- The `gonestlytest` package to test applications without opening a port.
