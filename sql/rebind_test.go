@@ -61,3 +61,19 @@ func TestNames(t *testing.T) {
 		t.Error(quoteIdentifier(`users.we"ird`))
 	}
 }
+
+// A slice the query builder passes as one value, such as an array column, is not an IN list.
+func TestBuilderArgumentsAreNotExpanded(t *testing.T) {
+	b := &sqlBuilder{dialect: Postgres}
+	And(Col[[]string]("tags").Eq([]string{"a", "b"}), Raw("id IN (?)", []int{1, 2})).appendSQL(b)
+	query, args, err := rebind(Postgres, b.sql.String(), b.args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `("tags" = $1 AND (id IN ($2, $3)))`; query != want {
+		t.Errorf("query = %s, want %s", query, want)
+	}
+	if want := []any{[]string{"a", "b"}, 1, 2}; !reflect.DeepEqual(args, want) {
+		t.Errorf("args = %#v, want %#v", args, want)
+	}
+}

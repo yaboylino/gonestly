@@ -70,11 +70,11 @@ func (q *Builder[T]) Offset(n int) *Builder[T] {
 
 // All returns every matching row.
 func (q *Builder[T]) All(ctx context.Context) ([]T, error) {
-	query, args, err := q.SQL()
+	b, err := q.selectSQL()
 	if err != nil {
 		return nil, err
 	}
-	rows, err := q.db.query(ctx, query, args)
+	rows, err := q.db.query(ctx, b.sql.String(), b.args)
 	if err != nil {
 		return nil, err
 	}
@@ -114,10 +114,22 @@ func (q *Builder[T]) Count(ctx context.Context) (int64, error) {
 	return counts[0], nil
 }
 
-// Exists reports whether at least one row matches.
+// Exists reports whether at least one row matches; it stops at the first one.
 func (q *Builder[T]) Exists(ctx context.Context) (bool, error) {
-	n, err := q.Count(ctx)
-	return n > 0, err
+	if q.err != nil {
+		return false, q.err
+	}
+	b := q.builder()
+	b.write("SELECT 1 FROM ")
+	b.ident(q.model.table)
+	q.appendWhere(b)
+	b.write(" LIMIT 1")
+	rows, err := q.db.query(ctx, b.sql.String(), b.args)
+	if err != nil {
+		return false, err
+	}
+	found, err := scanRows[int64](rows)
+	return len(found) > 0, err
 }
 
 // Update sets columns on every matching row and returns the number of rows changed. Without
@@ -160,8 +172,16 @@ func (q *Builder[T]) Delete(ctx context.Context) (int64, error) {
 
 // SQL returns the SELECT statement with ? placeholders and its arguments, for logging or tests.
 func (q *Builder[T]) SQL() (string, []any, error) {
+	b, err := q.selectSQL()
+	if err != nil {
+		return "", nil, err
+	}
+	return b.sql.String(), b.plainArgs(), nil
+}
+
+func (q *Builder[T]) selectSQL() (*sqlBuilder, error) {
 	if q.err != nil {
-		return "", nil, q.err
+		return nil, q.err
 	}
 	b := q.builder()
 	b.write("SELECT ")
@@ -195,7 +215,7 @@ func (q *Builder[T]) SQL() (string, []any, error) {
 		}
 		b.write(" OFFSET ", strconv.Itoa(q.offset))
 	}
-	return b.sql.String(), b.args, nil
+	return b, nil
 }
 
 func (q *Builder[T]) builder() *sqlBuilder {

@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -96,7 +97,7 @@ func NewMigrator(db *DB, fsys fs.FS) (*Migrator, error) {
 		slices.Sort(problems)
 		return nil, fmt.Errorf("sql: invalid migrations: %s", strings.Join(problems, "; "))
 	}
-	slices.SortFunc(migrations, func(a, b Migration) int { return int(a.Version - b.Version) })
+	slices.SortFunc(migrations, func(a, b Migration) int { return cmp.Compare(a.Version, b.Version) })
 	return &Migrator{db: db, migrations: migrations}, nil
 }
 
@@ -117,7 +118,7 @@ type appliedMigration struct {
 // than the latest applied one.
 func (m *Migrator) Up(ctx context.Context) ([]Migration, error) {
 	var applied []Migration
-	err := m.locked(ctx, func(done map[int64]appliedMigration) error {
+	err := m.locked(ctx, func(ctx context.Context, done map[int64]appliedMigration) error {
 		pending, err := m.pending(done)
 		if err != nil {
 			return err
@@ -144,7 +145,7 @@ func (m *Migrator) Up(ctx context.Context) ([]Migration, error) {
 // Down reverts the latest applied migration and returns it, or nil when none is applied.
 func (m *Migrator) Down(ctx context.Context) (*Migration, error) {
 	var reverted *Migration
-	err := m.locked(ctx, func(done map[int64]appliedMigration) error {
+	err := m.locked(ctx, func(ctx context.Context, done map[int64]appliedMigration) error {
 		if err := m.verify(done); err != nil {
 			return err
 		}
@@ -190,7 +191,9 @@ func (m *Migrator) Status(ctx context.Context) ([]MigrationStatus, error) {
 	return statuses, nil
 }
 
-func (m *Migrator) locked(ctx context.Context, fn func(done map[int64]appliedMigration) error) error {
+// locked runs fn while holding the migration lock. Everything fn does on its context uses the
+// connection that holds the lock, so a pool of a single connection is enough.
+func (m *Migrator) locked(ctx context.Context, fn func(ctx context.Context, done map[int64]appliedMigration) error) error {
 	conn, err := m.db.std.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("sql: connecting for migrations: %w", err)
@@ -202,6 +205,7 @@ func (m *Migrator) locked(ctx context.Context, fn func(done map[int64]appliedMig
 	}
 	defer unlock()
 
+	ctx = m.db.pin(ctx, conn)
 	if err := m.ensureTable(ctx); err != nil {
 		return err
 	}
@@ -209,7 +213,7 @@ func (m *Migrator) locked(ctx context.Context, fn func(done map[int64]appliedMig
 	if err != nil {
 		return err
 	}
-	return fn(done)
+	return fn(ctx, done)
 }
 
 func (m *Migrator) ensureTable(ctx context.Context) error {

@@ -77,6 +77,9 @@ func rebind(d Dialect, query string, args []any) (string, []any, error) {
 
 // expand returns the elements of a slice argument, or the argument itself.
 func expand(arg any, position int) ([]any, error) {
+	if l, ok := arg.(literal); ok {
+		return []any{l.value}, nil
+	}
 	if _, ok := arg.(driver.Valuer); ok || arg == nil {
 		return []any{arg}, nil
 	}

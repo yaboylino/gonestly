@@ -134,12 +134,44 @@ type txState struct {
 	depth int
 }
 
-// conn returns the transaction in ctx when it belongs to this database, or the pool.
+type connKey struct{}
+
+// pinnedConn is one connection that every query on its context uses, instead of the pool.
+type pinnedConn struct {
+	db   *DB
+	conn *stdsql.Conn
+}
+
+// pin makes the queries on the returned context use conn, so that work which must stay on
+// one connection, such as migrating under a session lock, needs no second one from the pool.
+func (db *DB) pin(ctx context.Context, conn *stdsql.Conn) context.Context {
+	return context.WithValue(ctx, connKey{}, &pinnedConn{db: db, conn: conn})
+}
+
+func (db *DB) pinned(ctx context.Context) *stdsql.Conn {
+	if p, ok := ctx.Value(connKey{}).(*pinnedConn); ok && p.db == db {
+		return p.conn
+	}
+	return nil
+}
+
+// conn returns the transaction in ctx when it belongs to this database, then the pinned
+// connection, then the pool.
 func (db *DB) conn(ctx context.Context) executor {
 	if state, ok := ctx.Value(txKey{}).(*txState); ok && state.db == db {
 		return state.tx
 	}
+	if conn := db.pinned(ctx); conn != nil {
+		return conn
+	}
 	return db.std
+}
+
+func (db *DB) begin(ctx context.Context) (*stdsql.Tx, error) {
+	if conn := db.pinned(ctx); conn != nil {
+		return conn.BeginTx(ctx, nil)
+	}
+	return db.std.BeginTx(ctx, nil)
 }
 
 // Transaction runs fn in a transaction that commits when fn returns nil and rolls back when it
@@ -151,7 +183,7 @@ func (db *DB) Transaction(ctx context.Context, fn func(ctx context.Context) erro
 	if state, ok := ctx.Value(txKey{}).(*txState); ok && state.db == db {
 		return db.savepoint(ctx, state, fn)
 	}
-	tx, err := db.std.BeginTx(ctx, nil)
+	tx, err := db.begin(ctx)
 	if err != nil {
 		return fmt.Errorf("sql: beginning a transaction: %w", err)
 	}

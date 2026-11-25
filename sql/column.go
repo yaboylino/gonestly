@@ -18,9 +18,24 @@ func (b *sqlBuilder) write(parts ...string) {
 	}
 }
 
+// literal marks an argument as one value, so a slice is not expanded into an IN list.
+type literal struct{ value any }
+
 func (b *sqlBuilder) arg(v any) {
 	b.sql.WriteByte('?')
-	b.args = append(b.args, v)
+	b.args = append(b.args, literal{v})
+}
+
+// plainArgs returns the arguments without their markers, for callers outside the package.
+func (b *sqlBuilder) plainArgs() []any {
+	args := make([]any, len(b.args))
+	for i, arg := range b.args {
+		if l, ok := arg.(literal); ok {
+			arg = l.value
+		}
+		args[i] = arg
+	}
+	return args
 }
 
 func (b *sqlBuilder) ident(name string) {

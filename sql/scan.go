@@ -17,7 +17,8 @@ func scanRows[T any](rows *stdsql.Rows) ([]T, error) {
 	t := reflect.TypeFor[T]()
 
 	var fields []*field
-	if isStructModel(t) {
+	switch {
+	case isStructModel(t):
 		m, err := modelOf(t)
 		if err != nil {
 			return nil, err
@@ -30,7 +31,9 @@ func scanRows[T any](rows *stdsql.Rows) ([]T, error) {
 			}
 			fields[i] = f
 		}
-	} else if len(columns) != 1 {
+	case t.Kind() == reflect.Pointer && isStructModel(t.Elem()):
+		return nil, fmt.Errorf("sql: scan into %s, not into a pointer to it", t.Elem())
+	case len(columns) != 1:
 		return nil, fmt.Errorf("sql: scanning into %s needs one column, the query returned %d", t, len(columns))
 	}
 
