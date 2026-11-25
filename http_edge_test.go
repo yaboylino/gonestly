@@ -286,7 +286,7 @@ func TestSchemaDetails(t *testing.T) {
 func TestContextCannotBeProvided(t *testing.T) {
 	_, err := gonestly.New(&gonestly.Module{
 		Name:      "app",
-		Providers: gonestly.Providers(gonestly.Value(context.Background()), func() context.Context { return context.Background() }),
+		Providers: gonestly.Providers(gonestly.Value(context.Background()), context.Background),
 	})
 	if !errors.Is(err, gonestly.ErrInvalidModule) || strings.Count(err.Error(), "reserved for the context of App.Start") != 2 {
 		t.Errorf("New() = %v", err)
