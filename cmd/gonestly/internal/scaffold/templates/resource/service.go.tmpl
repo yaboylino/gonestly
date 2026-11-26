@@ -9,17 +9,14 @@ import (
 
 const defaultLimit = 20
 
-// Service holds the logic for {{.Names.Words}}.
 type Service struct {
 	repo *sql.Repository[{{.Names.Model}}, int64]
 }
 
-// NewService returns the service for {{.Names.Words}}.
 func NewService(repo *sql.Repository[{{.Names.Model}}, int64]) *Service {
 	return &Service{repo: repo}
 }
 
-// List returns a page of {{.Names.Words}}, oldest first.
 func (s *Service) List(ctx context.Context, page, limit int) (ListResponse, error) {
 	page = max(page, 1)
 	if limit < 1 {
@@ -40,19 +37,16 @@ func (s *Service) List(ctx context.Context, page, limit int) (ListResponse, erro
 	return ListResponse{Items: items, Total: total}, nil
 }
 
-// Find returns one {{.Names.ModelWords}}, or sql.ErrNotFound.
 func (s *Service) Find(ctx context.Context, id int64) ({{.Names.Model}}, error) {
 	return s.repo.FindByID(ctx, id)
 }
 
-// Create stores a new {{.Names.ModelWords}}.
 func (s *Service) Create(ctx context.Context, req CreateRequest) ({{.Names.Model}}, error) {
 	item := {{.Names.Model}}{Name: req.Name}
 	err := s.repo.Create(ctx, &item)
 	return item, err
 }
 
-// Update replaces the fields of a {{.Names.ModelWords}}.
 func (s *Service) Update(ctx context.Context, req UpdateRequest) ({{.Names.Model}}, error) {
 	item, err := s.repo.FindByID(ctx, req.ID)
 	if err != nil {
@@ -64,7 +58,6 @@ func (s *Service) Update(ctx context.Context, req UpdateRequest) ({{.Names.Model
 	return item, err
 }
 
-// Delete removes a {{.Names.ModelWords}}.
 func (s *Service) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }

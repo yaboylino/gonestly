@@ -1,28 +1,23 @@
 package {{.Names.Package}}
 
-// ListRequest selects a page of {{.Names.Words}}.
 type ListRequest struct {
 	Page  int `query:"page" validate:"omitempty,gte=1" doc:"The page, starting at 1."`
 	Limit int `query:"limit" validate:"omitempty,gte=1,lte=100" doc:"The number of {{.Names.Words}} per page, at most 100."`
 }
 
-// FindRequest identifies one {{.Names.ModelWords}}.
 type FindRequest struct {
 	ID int64 `path:"id" doc:"The ID of the {{.Names.ModelWords}}."`
 }
 
-// CreateRequest holds the fields of a new {{.Names.ModelWords}}.
 type CreateRequest struct {
 	Name string `json:"name" validate:"required,max=200" doc:"The name of the {{.Names.ModelWords}}."`
 }
 
-// UpdateRequest replaces the fields of a {{.Names.ModelWords}}.
 type UpdateRequest struct {
 	ID   int64  `path:"id" doc:"The ID of the {{.Names.ModelWords}}."`
 	Name string `json:"name" validate:"required,max=200" doc:"The name of the {{.Names.ModelWords}}."`
 }
 
-// ListResponse is one page of {{.Names.Words}} and the total number.
 type ListResponse struct {
 	Items []{{.Names.Model}} `json:"items"`
 	Total int64 `json:"total"`

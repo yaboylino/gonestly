@@ -7,22 +7,16 @@ import (
 	"github.com/yaboylino/gonestly"
 )
 
-// Config is read from environment variables and the .env file.
 type Config struct {
 	Port int `default:"3000"`
 {{- if .Database}}
 	DatabaseURL string `env:"DATABASE_URL,required"`
 {{- end}}
-	// CORSOrigins are the origins of the frontends that may call the API from a browser.
 	CORSOrigins []string `env:"CORS_ORIGINS"`
-	// TrustedProxies is the number of reverse proxies in front of the application; see gonestly.TrustProxies.
 	TrustedProxies int `env:"TRUSTED_PROXIES"`
-	// Docs serves the OpenAPI document and Swagger UI; set DOCS=false to hide them.
 	Docs bool `default:"true"`
 }
 
-// NewServerConfig listens on the configured port, gives every request an ID and a log line,
-// adds the security headers, and answers the browsers of the configured origins.
 func NewServerConfig(cfg Config, logger *slog.Logger) gonestly.ServerConfig {
 	return gonestly.ServerConfig{
 		Addr:       fmt.Sprintf(":%d", cfg.Port),
@@ -36,7 +30,6 @@ func NewServerConfig(cfg Config, logger *slog.Logger) gonestly.ServerConfig {
 	}
 }
 
-// NewOpenAPIConfig describes the API in its documentation.
 func NewOpenAPIConfig(cfg Config) gonestly.OpenAPIConfig {
 	return gonestly.OpenAPIConfig{Title: "{{.Title}}", Version: "0.1.0", Disabled: !cfg.Docs}
 }

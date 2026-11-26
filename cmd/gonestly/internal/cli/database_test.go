@@ -119,7 +119,7 @@ func TestAddDatabaseToProject(t *testing.T) {
 	main, _ := os.ReadFile(filepath.Join(shop, "main.go"))
 	for file, wants := range map[string][]string{
 		"module.go": {`"github.com/yaboylino/gonestly/sql"`, `"example.com/shop/migrations"`, `Driver: "sqlite"`, "migrations.Files"},
-		"config.go": {"DatabaseURL string", `env:"DATABASE_URL,required"`},
+		"config.go": {"DatabaseURL", `env:"DATABASE_URL,required"`},
 		"main.go":   {`_ "modernc.org/sqlite"`},
 	} {
 		content := map[string][]byte{"module.go": module, "config.go": config, "main.go": main}[file]

@@ -7,15 +7,11 @@ import (
 	"github.com/yaboylino/gonestly/config"
 )
 
-// LogConfig is read from environment variables and the .env file.
 type LogConfig struct {
-	// Level is debug, info, warn or error.
 	Level string `env:"LOG_LEVEL" default:"info"`
-	// Format is text, json, or auto: text in a terminal and JSON elsewhere.
 	Format string `env:"LOG_FORMAT" default:"auto"`
 }
 
-// NewLogger builds the logger of the application from the log settings.
 func NewLogger() (*slog.Logger, error) {
 	cfg, err := config.Load[LogConfig](config.Options{})
 	if err != nil {

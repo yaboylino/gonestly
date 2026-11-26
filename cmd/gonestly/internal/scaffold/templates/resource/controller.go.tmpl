@@ -6,17 +6,14 @@ import (
 	"github.com/yaboylino/gonestly"
 )
 
-// Controller serves the routes for {{.Names.Words}}.
 type Controller struct {
 	service *Service
 }
 
-// NewController returns the controller for {{.Names.Words}}.
 func NewController(service *Service) *Controller {
 	return &Controller{service: service}
 }
 
-// Routes registers the routes for {{.Names.Words}}.
 func (c *Controller) Routes(r *gonestly.Router) {
 	r.Prefix("/{{.Names.Kebab}}")
 	gonestly.Get(r, "/", c.List, gonestly.Summary("List {{.Names.Words}}"))
@@ -26,27 +23,22 @@ func (c *Controller) Routes(r *gonestly.Router) {
 	gonestly.Delete(r, "/{id}", c.Delete, gonestly.Summary("Delete a {{.Names.ModelWords}}"))
 }
 
-// List returns a page of {{.Names.Words}}.
 func (c *Controller) List(ctx context.Context, req ListRequest) (ListResponse, error) {
 	return c.service.List(ctx, req.Page, req.Limit)
 }
 
-// Find returns one {{.Names.ModelWords}}.
 func (c *Controller) Find(ctx context.Context, req FindRequest) ({{.Names.Model}}, error) {
 	return c.service.Find(ctx, req.ID)
 }
 
-// Create stores a new {{.Names.ModelWords}}.
 func (c *Controller) Create(ctx context.Context, req CreateRequest) ({{.Names.Model}}, error) {
 	return c.service.Create(ctx, req)
 }
 
-// Update replaces the fields of a {{.Names.ModelWords}}.
 func (c *Controller) Update(ctx context.Context, req UpdateRequest) ({{.Names.Model}}, error) {
 	return c.service.Update(ctx, req)
 }
 
-// Delete removes a {{.Names.ModelWords}}.
 func (c *Controller) Delete(ctx context.Context, req FindRequest) (gonestly.Empty, error) {
 	return gonestly.Empty{}, c.service.Delete(ctx, req.ID)
 }

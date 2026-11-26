@@ -266,7 +266,7 @@ func render(pkgName string, models []model, used map[string]string) ([]byte, err
 	}
 	b.WriteString(")\n")
 	for _, m := range models {
-		fmt.Fprintf(&b, "\n// %sColumns are the columns of %s, for typed queries.\nvar %sColumns = struct {\n", m.name, m.name, m.name)
+		fmt.Fprintf(&b, "\nvar %sColumns = struct {\n", m.name)
 		for _, c := range m.columns {
 			fmt.Fprintf(&b, "\t%s %s.Column[%s]\n", c.field, sqlName, c.goType)
 		}
@@ -278,7 +278,7 @@ func render(pkgName string, models []model, used map[string]string) ([]byte, err
 		if len(m.relations) == 0 {
 			continue
 		}
-		fmt.Fprintf(&b, "\n// %sRelations are the relations of %s, for Include and Load.\nvar %sRelations = struct {\n", m.name, m.name, m.name)
+		fmt.Fprintf(&b, "\nvar %sRelations = struct {\n", m.name)
 		for _, r := range m.relations {
 			fmt.Fprintf(&b, "\t%s %s.Rel[%s, %s]\n", r.field, sqlName, m.name, r.target)
 		}

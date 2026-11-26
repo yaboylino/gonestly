@@ -6,21 +6,17 @@ import (
 	"github.com/yaboylino/gonestly"
 )
 
-// Controller serves the routes for {{.Names.Words}}.
 type Controller struct{}
 
-// NewController returns the controller for {{.Names.Words}}.
 func NewController() *Controller {
 	return &Controller{}
 }
 
-// Routes registers the routes for {{.Names.Words}}.
 func (c *Controller) Routes(r *gonestly.Router) {
 	r.Prefix("/{{.Names.Kebab}}")
 	gonestly.Get(r, "/", c.List)
 }
 
-// List returns the {{.Names.Words}}.
 func (c *Controller) List(context.Context, gonestly.Empty) ([]string, error) {
 	return []string{}, nil
 }

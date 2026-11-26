@@ -19,7 +19,6 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		// Printed as it is: a build error lists every problem on a line of its own.
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

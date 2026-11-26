@@ -60,6 +60,12 @@ All notable changes to this project are documented in this file. The format is b
 - `gonestly add jobs` creates the jobs table as a migration for the database of the project and
   adds the module to the root module.
 
+### Changed
+
+- The code that `gonestly new` and `gonestly generate` write has no comments, and neither do the
+  `.env` and `.gitignore` of a new project or the generated columns file, which keeps its
+  `Code generated` line.
+
 ## [0.3.0] - 2026-11-26
 
 ### Added
