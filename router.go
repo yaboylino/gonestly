@@ -209,6 +209,9 @@ func addRoute[Req, Res any](r *Router, method, path string, h Handler[Req, Res],
 	rt.emptyResult = rt.resType == emptyType
 	rt.problems = append(rt.problems, problems...)
 	rt.problems = append(rt.problems, b.pathProblems(rt.path)...)
+	if b.form && rt.method != http.MethodPost && rt.method != http.MethodPut && rt.method != http.MethodPatch {
+		rt.problems = append(rt.problems, "a form is only read from a POST, PUT or PATCH request")
+	}
 	if (rt.status == http.StatusNoContent || rt.status == http.StatusNotModified) && !rt.emptyResult {
 		rt.problems = append(rt.problems, fmt.Sprintf("the status %d has no body; return gonestly.Empty instead of %s", rt.status, rt.resType))
 	}

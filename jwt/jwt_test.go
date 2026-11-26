@@ -169,6 +169,18 @@ func TestIdentityProvider(t *testing.T) {
 	}
 }
 
+func TestWeakRSAKey(t *testing.T) {
+	weak, _ := rsa.GenerateKey(rand.Reader, 1024)
+	for name, opts := range map[string]jwt.Options{
+		"private": {PrivateKey: pemBlock(t, "PRIVATE KEY", weak)},
+		"public":  {PublicKey: pemBlock(t, "PUBLIC KEY", &weak.PublicKey)},
+	} {
+		if _, err := jwt.New(opts); err == nil || !strings.Contains(err.Error(), "the RSA key has 1024 bits and needs at least 2048") {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+}
+
 func TestOptionMistakes(t *testing.T) {
 	for want, opts := range map[string]jwt.Options{
 		"set exactly one of Secret, PrivateKey, PublicKey and JWKSURL; 0 are set": {},

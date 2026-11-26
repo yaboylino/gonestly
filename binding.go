@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/yaboylino/gonestly/internal/convert"
@@ -83,6 +84,10 @@ func newBinder(t reflect.Type) (*binder, []string) {
 					problems = append(problems, fmt.Sprintf("%s.%s has type %s, which cannot be read from the %s", t.Name(), f.Name, f.Type, source))
 				}
 			}
+		}
+		if isFileType(f.Type) && !slices.Contains(sources, "form") {
+			problems = append(problems, fmt.Sprintf("%s.%s is an uploaded file, so it needs a form tag", t.Name(), f.Name))
+			continue
 		}
 		switch {
 		case len(sources) > 1:

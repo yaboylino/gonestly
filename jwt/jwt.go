@@ -22,6 +22,7 @@ const (
 	defaultTTL        = time.Hour
 	defaultRolesClaim = "roles"
 	minSecretBytes    = 32
+	minRSABits        = 2048
 )
 
 // ErrInvalidToken reports a token that is malformed, has a wrong signature or fails a check
@@ -315,6 +316,9 @@ func parsePublicKey(pem string) (crypto.PublicKey, error) {
 func methodFor(public crypto.PublicKey) (golangjwt.SigningMethod, error) {
 	switch key := public.(type) {
 	case *rsa.PublicKey:
+		if key.N.BitLen() < minRSABits {
+			return nil, fmt.Errorf("jwt: the RSA key has %d bits and needs at least %d", key.N.BitLen(), minRSABits)
+		}
 		return golangjwt.SigningMethodRS256, nil
 	case ed25519.PublicKey:
 		return golangjwt.SigningMethodEdDSA, nil

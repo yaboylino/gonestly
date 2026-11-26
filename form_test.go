@@ -146,6 +146,7 @@ type mixedFormRequest struct {
 	Email string   `json:"email"`
 	Both  string   `form:"both" query:"both"`
 	Bad   struct{} `form:"bad"`
+	Loose gonestly.File
 }
 
 func TestFormMistakes(t *testing.T) {
@@ -163,6 +164,8 @@ func TestFormMistakes(t *testing.T) {
 		`mixedFormRequest.Both has more than one of the tags query, form`,
 		`mixedFormRequest.Bad has type struct {}, which cannot be read from the form`,
 		`the body limit -1 is negative`,
+		`mixedFormRequest.Loose is an uploaded file, so it needs a form tag`,
+		`GET /search in`, `a form is only read from a POST, PUT or PATCH request`,
 	} {
 		assertContains(t, err, want)
 	}
@@ -171,6 +174,7 @@ func TestFormMistakes(t *testing.T) {
 type mixedController struct{}
 
 func (mixedController) Routes(r *gonestly.Router) {
+	gonestly.Get(r, "/search", func(context.Context, signupRequest) (gonestly.Empty, error) { return gonestly.Empty{}, nil })
 	gonestly.Post(r, "/mixed", func(context.Context, mixedFormRequest) (gonestly.Empty, error) { return gonestly.Empty{}, nil }, gonestly.MaxBodyBytes(-1))
 }
 

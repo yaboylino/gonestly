@@ -71,30 +71,37 @@ func (h appHealth) Report(ctx context.Context) HealthReport {
 	}
 
 	report := HealthReport{Status: healthOK}
-	var mu sync.Mutex
-	var wg sync.WaitGroup
+	checkers := map[string]HealthChecker{}
 	for _, pn := range live {
 		checker, ok := pn.instance.Interface().(HealthChecker)
 		if !ok || pn.provider.alias {
 			continue
 		}
 		name := strings.TrimPrefix(pn.instance.Type().String(), "*")
-		if report.Checks == nil {
-			report.Checks = map[string]string{}
-		}
-		if _, taken := report.Checks[name]; taken {
+		if _, taken := checkers[name]; taken {
 			name = pn.String()
 		}
-		report.Checks[name] = healthOK
+		checkers[name] = checker
+	}
+	if len(checkers) > 0 {
+		report.Checks = make(map[string]string, len(checkers))
+	}
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for name, checker := range checkers {
 		wg.Go(func() {
 			err := callHook(func() error { return checker.CheckHealth(ctx) })
-			if err == nil {
-				return
+			if err != nil {
+				a.logger.WarnContext(ctx, "health check failed", slog.String("check", name), slog.Any("error", err))
 			}
-			a.logger.WarnContext(ctx, "health check failed", slog.String("check", name), slog.Any("error", err))
 			mu.Lock()
 			defer mu.Unlock()
-			report.Checks[name], report.Status = healthFailed, healthUnavailable
+			if err != nil {
+				report.Checks[name], report.Status = healthFailed, healthUnavailable
+				return
+			}
+			report.Checks[name] = healthOK
 		})
 	}
 	wg.Wait()

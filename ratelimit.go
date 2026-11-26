@@ -155,8 +155,16 @@ func clientAddress(r *http.Request, trustedProxies int) string {
 // address, because one client usually has all the addresses of such a network.
 func clientNetwork(address string) string {
 	ip, err := netip.ParseAddr(address)
-	if err != nil || ip.Unmap().Is4() {
-		return address
+	if err != nil {
+		// Some proxies add the port; without it the address stays the same for one client.
+		withPort, portErr := netip.ParseAddrPort(address)
+		if portErr != nil {
+			return address
+		}
+		ip = withPort.Addr()
+	}
+	if ip.Unmap().Is4() {
+		return ip.Unmap().String()
 	}
 	prefix, err := ip.Prefix(64)
 	if err != nil {

@@ -52,11 +52,14 @@ func newCORS(config CORSConfig) (*cors, []error) {
 	}
 	c := &cors{
 		origins:     map[string]bool{},
-		methods:     config.AllowedMethods,
+		methods:     slices.Clone(config.AllowedMethods),
 		headers:     strings.Join(config.AllowedHeaders, ", "),
 		exposed:     RequestIDHeader,
 		credentials: config.AllowCredentials,
 		maxAge:      strconv.Itoa(int(defaultCORSMaxAge.Seconds())),
+	}
+	for i, method := range c.methods {
+		c.methods[i] = strings.ToUpper(method)
 	}
 	if len(c.methods) == 0 {
 		c.methods = []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete}
@@ -100,7 +103,8 @@ func (c *cors) allows(origin string) bool {
 		return true
 	}
 	for _, p := range c.patterns {
-		if len(origin) > len(p[0])+len(p[1]) && strings.HasPrefix(origin, p[0]) && strings.HasSuffix(origin, p[1]) {
+		if len(origin) > len(p[0])+len(p[1]) && strings.HasPrefix(origin, p[0]) && strings.HasSuffix(origin, p[1]) &&
+			!strings.ContainsAny(origin[len(p[0]):len(origin)-len(p[1])], "/:@") {
 			return true
 		}
 	}

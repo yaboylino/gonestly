@@ -9,7 +9,7 @@ A modular application framework for Go, inspired by [NestJS](https://nestjs.com)
 modules, dependency injection, typed HTTP handlers, a type-safe SQL layer and a CLI that generates
 and runs your code, while staying plain, idiomatic Go.
 
-> **Status:** `v0.1.0` is the first release. Until `v1.0.0` a minor version may change the API; the
+> **Status:** in active development, with regular releases. Until `v1.0.0` a minor version may change the API; the
 > [changelog](CHANGELOG.md) lists every change.
 
 **[Read the documentation](https://yaboylino.github.io/gonestly-docs)** in English or Dutch.
@@ -143,6 +143,8 @@ your application.
 - [x] Documentation site in English and Dutch
 - [x] MySQL and MariaDB support
 - [x] First release: `v0.1.0`
+- [x] `v0.2.0`: forms and uploads, CORS, rate limiting, JWT authentication, upserts and health checks
+- [ ] Relations in the query layer: loading related rows and nested writes
 
 ## Contributing
 

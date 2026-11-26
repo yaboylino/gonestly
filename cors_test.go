@@ -29,14 +29,16 @@ func TestCORS(t *testing.T) {
 	app := corsApp(t, gonestly.CORSConfig{AllowedOrigins: []string{"https://app.example.com", "https://*.preview.example.com"}})
 
 	for origin, allowed := range map[string]bool{
-		"https://app.example.com":          true,
-		"https://APP.example.com":          true,
-		"https://pr-7.preview.example.com": true,
-		"https://preview.example.com":      false,
-		"https://.preview.example.com":     false,
-		"https://evil.com":                 false,
-		"http://app.example.com":           false,
-		"https://app.example.com.evil.com": false,
+		"https://app.example.com":                true,
+		"https://APP.example.com":                true,
+		"https://pr-7.preview.example.com":       true,
+		"https://preview.example.com":            false,
+		"https://.preview.example.com":           false,
+		"https://evil.com":                       false,
+		"http://app.example.com":                 false,
+		"https://app.example.com.evil.com":       false,
+		"https://evil.com/.preview.example.com":  false,
+		"https://evil.com:1.preview.example.com": false,
 	} {
 		res := app.Get("/users/1", "Origin", origin)
 		got := res.Header.Get("Access-Control-Allow-Origin")
@@ -84,7 +86,7 @@ func TestCORS(t *testing.T) {
 func TestCORSOptions(t *testing.T) {
 	app := corsApp(t, gonestly.CORSConfig{
 		AllowedOrigins:   []string{"https://app.example.com"},
-		AllowedMethods:   []string{"GET"},
+		AllowedMethods:   []string{"get"},
 		AllowedHeaders:   []string{"Authorization"},
 		ExposedHeaders:   []string{},
 		AllowCredentials: true,

@@ -91,6 +91,16 @@ func TestUpsert(t *testing.T) {
 			t.Errorf("rows = %d, want 1", n)
 		}
 
+		// An upsert that changes nothing still finds its row.
+		same := Member{Email: "ada@example.com", Name: "Ada Lovelace", Note: &note}
+		if err := repo.Upsert(ctx, &same, "email"); err != nil || same.ID != 1 || same.Visits != 12 {
+			t.Errorf("an unchanged upsert = %+v, %v", same, err)
+		}
+		unchanged := Member{Email: "ada@example.com", Name: "Ada Lovelace", Note: &note}
+		if err := repo.UpsertAll(ctx, []Member{unchanged}, "email"); err != nil {
+			t.Errorf("an unchanged batch = %v", err)
+		}
+
 		// Without columns the primary key decides.
 		byKey := Member{ID: 1, Email: "ada@example.org", Name: "Ada", Visits: 20}
 		if err := repo.Upsert(ctx, &byKey); err != nil || byKey.Email != "ada@example.org" || byKey.Visits != 20 || byKey.Note != nil {
