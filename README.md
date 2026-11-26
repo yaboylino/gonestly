@@ -40,6 +40,9 @@ cd shop && gonestly dev
 
 Or add the framework to an existing module with `go get github.com/yaboylino/gonestly`.
 
+[examples/tasks](examples/tasks) is a complete application to read and run: projects with tasks,
+a token for writes, transactions across modules and tests of the whole API.
+
 ## Preview
 
 ```go

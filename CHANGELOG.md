@@ -6,6 +6,11 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Added
+
+- `examples/tasks`, a complete application with two feature modules, a guard, transactions
+  across modules and tests.
+
 ## [0.1.0] - 2026-11-26
 
 ### Added

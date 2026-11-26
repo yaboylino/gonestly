@@ -5,6 +5,7 @@ toolchain go1.26.11
 use (
 	.
 	./cmd/gonestly
+	./examples/tasks
 	./sql
 	./validator
 )

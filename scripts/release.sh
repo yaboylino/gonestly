@@ -39,18 +39,23 @@ git push --quiet origin main "${tags[@]}"
 # The CLI is installed with go install, which refuses replace directives, so it requires the
 # versions that were just published.
 step "Waiting for the module proxy"
-for path in "$module" "$module/sql"; do
+for path in "$module" "$module/sql" "$module/validator"; do
 	until GOWORK=off GOFLAGS=-mod=mod GOPROXY=https://proxy.golang.org go list -m "$path@$version" >/dev/null 2>&1; do
 		sleep 5
 	done
 done
 
-step "Releasing the CLI"
+step "Releasing the CLI and the example"
 (
 	cd cmd/gonestly
 	go mod edit -dropreplace="$module" -dropreplace="$module/sql" -require="$module@$version" -require="$module/sql@$version"
 	GOWORK=off go mod tidy
 	GOWORK=off go build ./...
+)
+(
+	cd examples/tasks
+	go mod edit -require="$module@$version" -require="$module/sql@$version" -require="$module/validator@$version"
+	GOWORK=off go mod tidy
 )
 git commit --quiet --all --message "chore(cli): release $version"
 git tag --annotate "cmd/gonestly/$version" --message "cmd/gonestly/$version"

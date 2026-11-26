@@ -1,7 +1,7 @@
 version: 2
 updates:
   - package-ecosystem: gomod
-    directories: ["/", "/validator", "/sql", "/cmd/gonestly"]
+    directories: ["/", "/validator", "/sql", "/cmd/gonestly", "/examples/tasks"]
     schedule:
       interval: weekly
     commit-message:
