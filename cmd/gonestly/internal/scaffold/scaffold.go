@@ -167,6 +167,9 @@ func NewProject(ctx context.Context, opts ProjectOptions, printer *term.Printer)
 		{"new/env.tmpl", ".env"},
 		{"new/env.tmpl", ".env.example"},
 		{"new/gitignore.tmpl", ".gitignore"},
+		{"new/editorconfig.tmpl", ".editorconfig"},
+		{"new/vscode-settings.json.tmpl", ".vscode/settings.json"},
+		{"new/Makefile.tmpl", "Makefile"},
 		{"new/README.md.tmpl", "README.md"},
 	}
 	if opts.Database != "" {
