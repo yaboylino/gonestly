@@ -16,6 +16,13 @@ All notable changes to this project are documented in this file. The format is b
   without taking one twice, put back what a shutdown interrupted, take over from a process that
   died, and clean up finished jobs. `Stats`, `Failed`, `Retry` and `RunDue` help to operate
   and test.
+- API versioning: `Router.Version` registers routes under /v1, /v2 and so on, every response of
+  such a route has an `API-Version` header, `ServerConfig.Versioning` lets clients choose with a
+  header (with an optional default), and the OpenAPI document can be read per version, with a
+  selector on the documentation page.
+- `Router.Deprecate` and `Deprecated` with `DeprecatedSince`, `SunsetAt` and `SuccessorAt` send
+  the `Deprecation` and `Sunset` headers and a link to the successor, and say so in the OpenAPI
+  document. `Deprecated()` without options still only marks the document.
 - `SecurityHeaders`, middleware for Strict-Transport-Security (on HTTPS), X-Content-Type-Options,
   Content-Security-Policy, X-Frame-Options, Referrer-Policy, Permissions-Policy and the
   Cross-Origin policies, with strict defaults for an API. The API documentation page sets a

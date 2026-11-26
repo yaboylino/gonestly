@@ -231,6 +231,9 @@ func buildOperation(g *schemaGenerator, rt *route, guards []Guard, schemes map[s
 		Deprecated:  rt.docs.deprecated,
 		Responses:   map[string]*openAPIResponse{},
 	}
+	if rt.deprecation != nil {
+		op.Description = strings.TrimSpace(op.Description + "\n\n" + rt.deprecation.describe())
+	}
 	if op.OperationID == "" {
 		op.OperationID = lowerFirst(name)
 		if name == "" {

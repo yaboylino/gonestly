@@ -1,6 +1,7 @@
 package gonestly
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
@@ -28,6 +29,9 @@ type Router struct {
 	interceptors []Interceptor
 	middleware   []Middleware
 	routes       *[]*route
+	version      string
+	deprecation  *deprecation
+	problems     []string
 }
 
 // RouteInfo describes a registered route.
@@ -56,11 +60,38 @@ type route struct {
 	interceptors []Interceptor
 	middleware   []Middleware
 	problems     []string
+	version      string
+	deprecation  *deprecation
 }
 
 // Prefix adds a path prefix, such as "/users", to the routes registered after it.
 func (r *Router) Prefix(prefix string) *Router {
 	r.prefix = joinPath(r.prefix, prefix)
+	return r
+}
+
+// Version puts the routes registered after it under a version of the API, in the path: Version("2")
+// makes them /v2/..., after the prefix that is set so far. Call it before Prefix to get
+// /v2/users, and see VersioningConfig to also let clients choose with a header. Every response
+// of such a route says which version answered in the API-Version header, and the OpenAPI
+// document can be read per version. A version is a number such as "1" or "1.1", with or without
+// the v.
+func (r *Router) Version(version string) *Router {
+	v, ok := normalizeVersion(version)
+	if !ok {
+		r.problems = append(r.problems, fmt.Sprintf("the version %q is not a number such as 1 or 1.1", version))
+		return r
+	}
+	r.version = v
+	r.prefix = joinPath(r.prefix, "v"+v)
+	return r
+}
+
+// Deprecate marks the routes registered after it as deprecated, for example a whole version
+// that is replaced. They are deprecated in the OpenAPI document, and their responses carry the
+// Deprecation and Sunset headers and a link to the successor, as far as the options give them.
+func (r *Router) Deprecate(opts ...DeprecationOption) *Router {
+	r.deprecation = newDeprecation(opts)
 	return r
 }
 
@@ -93,6 +124,9 @@ func (r *Router) Group(prefix string, fn func(r *Router)) {
 		interceptors: slices.Clip(r.interceptors),
 		middleware:   slices.Clip(r.middleware),
 		routes:       r.routes,
+		version:      r.version,
+		deprecation:  r.deprecation,
+		problems:     slices.Clip(r.problems),
 	})
 }
 
@@ -100,6 +134,7 @@ func (r *Router) Group(prefix string, fn func(r *Router)) {
 type RouteOption func(*routeOptions)
 
 type routeOptions struct {
+	deprecation  *deprecation
 	status       int
 	maxBodyBytes int64
 	guards       []Guard
@@ -138,9 +173,16 @@ func OperationID(id string) RouteOption {
 	return func(o *routeOptions) { o.docs.operationID = id }
 }
 
-// Deprecated marks a route as deprecated in the OpenAPI document.
-func Deprecated() RouteOption {
-	return func(o *routeOptions) { o.docs.deprecated = true }
+// Deprecated marks a route as deprecated in the OpenAPI document. With options it also sends
+// the Deprecation and Sunset headers and a link to the successor: see DeprecatedSince, SunsetAt
+// and SuccessorAt, and Router.Deprecate for a whole group of routes.
+func Deprecated(opts ...DeprecationOption) RouteOption {
+	return func(o *routeOptions) {
+		o.docs.deprecated = true
+		if len(opts) > 0 {
+			o.deprecation = newDeprecation(opts)
+		}
+	}
 }
 
 // Status sets the status code of a successful response. It defaults to 201 for POST, 204 for
@@ -241,6 +283,13 @@ func (r *Router) newRoute(method, path string, opts []RouteOption) *route {
 		guards:       append(slices.Clip(r.guards), o.guards...),
 		interceptors: append(slices.Clip(r.interceptors), o.interceptors...),
 		middleware:   slices.Clip(r.middleware),
+		version:      r.version,
+		deprecation:  cmp.Or(o.deprecation, r.deprecation),
+		problems:     slices.Clip(r.problems),
+	}
+	if rt.deprecation != nil {
+		rt.docs.deprecated = true
+		rt.problems = append(rt.problems, rt.deprecation.problems()...)
 	}
 	if o.status != 0 && (o.status < 200 || o.status > 399) {
 		rt.problems = append(rt.problems, fmt.Sprintf("the status %d is not a success status", o.status))

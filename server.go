@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"runtime/debug"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -44,6 +45,8 @@ type ServerConfig struct {
 	Guards []Guard
 	// Interceptors wrap the interceptors of every route; the first is outermost.
 	Interceptors []Interceptor
+	// Versioning lets clients choose the version of the API with a header; see VersioningConfig.
+	Versioning VersioningConfig
 }
 
 func (c ServerConfig) withDefaults() ServerConfig {
@@ -71,6 +74,8 @@ func (c ServerConfig) withDefaults() ServerConfig {
 type server struct {
 	config    ServerConfig
 	openAPI   []byte
+	versions  []string
+	byVersion map[string][]byte
 	logger    *slog.Logger
 	validator StructValidator
 	routes    []*route
@@ -105,6 +110,8 @@ func newServer(controllers []controllerInstance, config ServerConfig, openAPI Op
 	if !openAPI.Disabled {
 		problems = append(problems, openAPIRouteConflict(s.routes, openAPI)...)
 	}
+	s.versions = routeVersions(s.routes)
+	problems = append(problems, s.checkVersioning()...)
 	cors, corsProblems := newCORS(s.config.CORS)
 	problems = append(problems, corsProblems...)
 	if len(problems) > 0 {
@@ -115,6 +122,21 @@ func newServer(controllers []controllerInstance, config ServerConfig, openAPI Op
 		return nil, fmt.Errorf("gonestly: encoding the OpenAPI document: %w", err)
 	}
 	s.openAPI = document
+	if len(s.versions) > 0 {
+		s.byVersion = map[string][]byte{}
+		for _, v := range s.versions {
+			var versionRoutes []*route
+			for _, rt := range s.routes {
+				if rt.version == v {
+					versionRoutes = append(versionRoutes, rt)
+				}
+			}
+			s.byVersion[v], err = json.Marshal(buildOpenAPI(versionRoutes, openAPI, s.config.Guards))
+			if err != nil {
+				return nil, fmt.Errorf("gonestly: encoding the OpenAPI document of version %s: %w", v, err)
+			}
+		}
+	}
 	if !openAPI.Disabled {
 		s.serveOpenAPI(openAPI)
 	}
@@ -160,10 +182,33 @@ func (s *server) recovered(next http.Handler) http.Handler {
 }
 
 func (s *server) serveOpenAPI(config OpenAPIConfig) {
-	ui, uiPolicy := renderSwaggerUI(config.Title, relativeURL(config.DocsPath, config.JSONPath))
-	s.mux.HandleFunc("GET "+config.JSONPath, func(w http.ResponseWriter, _ *http.Request) {
+	jsonURL := relativeURL(config.DocsPath, config.JSONPath)
+	specs := []swaggerSpec{{Name: "All versions", URL: jsonURL}}
+	for _, v := range s.versions {
+		specs = append(specs, swaggerSpec{Name: "Version " + v, URL: jsonURL + "?version=" + v})
+	}
+	if len(s.versions) == 0 {
+		specs[0].Name = config.Title
+	}
+	ui, uiPolicy := renderSwaggerUI(config.Title, specs)
+	s.mux.HandleFunc("GET "+config.JSONPath, func(w http.ResponseWriter, r *http.Request) {
+		document := s.openAPI
+		if v := r.URL.Query().Get("version"); v != "" {
+			normalized, _ := normalizeVersion(v)
+			var ok bool
+			if document, ok = s.byVersion[normalized]; !ok {
+				writeProblem(w, Problem{
+					Type:     "about:blank",
+					Title:    http.StatusText(http.StatusNotFound),
+					Status:   http.StatusNotFound,
+					Detail:   fmt.Sprintf("There is no version %q; the versions are %s.", v, strings.Join(s.versions, ", ")),
+					Instance: r.URL.Path,
+				})
+				return
+			}
+		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_, _ = w.Write(s.openAPI)
+		_, _ = w.Write(document)
 	})
 	s.mux.HandleFunc("GET "+config.DocsPath, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -194,6 +239,10 @@ func (s *server) register(rt *route) (err error) {
 }
 
 func (s *server) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	r, ok := s.negotiateVersion(w, r)
+	if !ok {
+		return
+	}
 	if _, pattern := s.mux.Handler(r); pattern == "" {
 		s.mux.ServeHTTP(&problemWriter{ResponseWriter: w, request: r}, r)
 		return
@@ -210,6 +259,12 @@ func (s *server) routeHandler(rt *route) http.Handler {
 			f.mu.Lock()
 			f.route = rt.path
 			f.mu.Unlock()
+		}
+		if rt.version != "" {
+			w.Header().Set(APIVersionHeader, rt.version)
+		}
+		if rt.deprecation != nil {
+			rt.deprecation.setHeaders(w.Header())
 		}
 		ctx := context.WithValue(r.Context(), requestKey{}, &requestState{request: r, header: w.Header()})
 		for _, guard := range guards {
