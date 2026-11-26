@@ -74,8 +74,8 @@ func New(root *Module, opts ...Option) (*App, error) {
 	core := &Module{
 		Name:      coreModuleName,
 		Global:    true,
-		Providers: Providers(Value(o.logger), Value[Shutdowner](app), Value[Health](appHealth{app: app})),
-		Exports:   Exports(Type[*slog.Logger](), Type[Shutdowner](), Type[Health]()),
+		Providers: Providers(Value(o.logger), Value(newEventBus(o.logger)), Value[Shutdowner](app), Value[Health](appHealth{app: app})),
+		Exports:   Exports(Type[*slog.Logger](), Type[*EventBus](), Type[Shutdowner](), Type[Health]()),
 	}
 	c, err := buildContainer(root, core, o.overrides)
 	if err != nil {
