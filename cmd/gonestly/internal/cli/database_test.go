@@ -216,6 +216,11 @@ func TestAddJobsToProject(t *testing.T) {
 		t.Errorf("adding twice:\n%s", out)
 	}
 
+	// A resource made in the same second as the jobs migration gets a version of its own.
+	if out, code := run(t, shop, "generate", "resource", "products"); code != 0 {
+		t.Fatalf("generate failed:\n%s", out)
+	}
+
 	// The project builds, and its migrations create a table that the queue works with.
 	test := `package app_test
 
