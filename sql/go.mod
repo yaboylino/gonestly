@@ -7,7 +7,7 @@ toolchain go1.26.11
 require (
 	github.com/go-sql-driver/mysql v1.10.2
 	github.com/jackc/pgx/v5 v5.13.0
-	github.com/yaboylino/gonestly v0.4.1
+	github.com/yaboylino/gonestly v0.5.0
 	modernc.org/sqlite v1.63.0
 )
 
