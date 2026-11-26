@@ -79,7 +79,7 @@ func loadRelations(ctx context.Context, db *DB, m *model, rows []reflect.Value, 
 		if err != nil {
 			return err
 		}
-		related, err := loadRelation(ctx, db, m, rel, rows)
+		related, err := loadRelation(ctx, db, rel, rows)
 		if err != nil {
 			return fmt.Errorf("sql: loading %s.%s: %w", m.typ.Name(), rel.name, err)
 		}
@@ -94,7 +94,7 @@ func loadRelations(ctx context.Context, db *DB, m *model, rows []reflect.Value, 
 
 // loadRelation loads one relation for all rows and returns the addressable related rows that
 // were assigned, so that their own relations can be loaded next.
-func loadRelation(ctx context.Context, db *DB, m *model, rel *relation, rows []reflect.Value) ([]reflect.Value, error) {
+func loadRelation(ctx context.Context, db *DB, rel *relation, rows []reflect.Value) ([]reflect.Value, error) {
 	var keys []any
 	seen := map[any]bool{}
 	for _, row := range rows {

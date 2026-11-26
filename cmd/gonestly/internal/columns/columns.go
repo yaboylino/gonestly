@@ -24,8 +24,15 @@ const FileName = "columns_gen.go"
 const sqlPath = "github.com/yaboylino/gonestly/sql"
 
 type model struct {
-	name    string
-	columns []column
+	name      string
+	columns   []column
+	relations []relation
+}
+
+// relation is a field tagged rel, and the type of the rows it holds.
+type relation struct {
+	field  string
+	target string
 }
 
 type column struct {
@@ -144,6 +151,18 @@ func parsePackage(dir string) (string, []*ast.File, error) {
 
 func collect(m *model, info structInfo, structs map[string]structInfo, used map[string]string) error {
 	for _, f := range info.spec.Fields.List {
+		if _, ok := lookupTag(f, "rel"); ok {
+			target, err := relationTarget(f, info.imports, used)
+			if err != nil {
+				return fmt.Errorf("%s: %w", m.name, err)
+			}
+			for _, n := range f.Names {
+				if n.IsExported() {
+					m.relations = append(m.relations, relation{field: n.Name, target: target})
+				}
+			}
+			continue
+		}
 		tag := fieldTag(f, "db")
 		name, _, _ := strings.Cut(tag, ",")
 		if name == "-" {
@@ -182,6 +201,21 @@ func collect(m *model, info structInfo, structs map[string]structInfo, used map[
 		}
 	}
 	return nil
+}
+
+// relationTarget returns the type of the rows of a relation field: the element of a slice, or
+// what a pointer points at.
+func relationTarget(f *ast.Field, imports, used map[string]string) (string, error) {
+	expr := f.Type
+	switch t := expr.(type) {
+	case *ast.ArrayType:
+		expr = t.Elt
+	case *ast.StarExpr:
+		expr = t.X
+	default:
+		return "", errors.New("a relation is a slice of structs or a pointer to a struct")
+	}
+	return typeString(expr, imports, used)
 }
 
 func render(pkgName string, models []model, used map[string]string) ([]byte, error) {
@@ -230,6 +264,18 @@ func render(pkgName string, models []model, used map[string]string) ([]byte, err
 		b.WriteString("}{\n")
 		for _, c := range m.columns {
 			fmt.Fprintf(&b, "\t%s: %s.Col[%s](%q),\n", c.field, sqlName, c.goType, c.name)
+		}
+		b.WriteString("}\n")
+		if len(m.relations) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "\n// %sRelations are the relations of %s, for Include and Load.\nvar %sRelations = struct {\n", m.name, m.name, m.name)
+		for _, r := range m.relations {
+			fmt.Fprintf(&b, "\t%s %s.Rel[%s, %s]\n", r.field, sqlName, m.name, r.target)
+		}
+		b.WriteString("}{\n")
+		for _, r := range m.relations {
+			fmt.Fprintf(&b, "\t%s: %s.Relation[%s, %s](%q),\n", r.field, sqlName, m.name, r.target, r.field)
 		}
 		b.WriteString("}\n")
 	}

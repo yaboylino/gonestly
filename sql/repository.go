@@ -12,6 +12,12 @@ import (
 //
 // Register it as a provider directly: gonestly.Provide(sql.NewRepository[User, int64]).
 type Repository[T any, ID comparable] struct {
+	store
+}
+
+// store is what a repository needs to read and write the rows of one model, without knowing
+// the Go type of the rows. Nested writes use it for the models that a model relates to.
+type store struct {
 	db    *DB
 	model *model
 }
@@ -34,7 +40,7 @@ func NewRepository[T any, ID comparable](db *DB) (*Repository[T, ID], error) {
 	if err := m.resolveRelations(); err != nil {
 		return nil, err
 	}
-	return &Repository[T, ID]{db: db, model: m}, nil
+	return &Repository[T, ID]{store{db: db, model: m}}, nil
 }
 
 // Load fills the relations of a row that was loaded without them, such as one from FindByID.
@@ -75,7 +81,11 @@ func (r *Repository[T, ID]) Count(ctx context.Context, conditions ...Condition) 
 // primary key and zero fields tagged db:",default" are left to the database. In MySQL the
 // database can only generate an auto increment key; set any other key before Create.
 func (r *Repository[T, ID]) Create(ctx context.Context, v *T) error {
-	rv := reflect.ValueOf(v).Elem()
+	return r.create(ctx, reflect.ValueOf(v).Elem())
+}
+
+// create inserts the row in rv, an addressable struct of the model, and fills it.
+func (r store) create(ctx context.Context, rv reflect.Value) error {
 	b := &sqlBuilder{dialect: r.db.dialect}
 	r.writeInsert(b, r.insertFields(rv), []reflect.Value{rv})
 	if r.db.dialect.returning() {
@@ -163,7 +173,7 @@ func (r *Repository[T, ID]) Delete(ctx context.Context, id ID) error {
 	return err
 }
 
-func (r *Repository[T, ID]) columns(b *sqlBuilder) {
+func (r store) columns(b *sqlBuilder) {
 	for i, f := range r.model.fields {
 		if i > 0 {
 			b.write(", ")
@@ -173,12 +183,12 @@ func (r *Repository[T, ID]) columns(b *sqlBuilder) {
 }
 
 // reload fills v with the stored row that has its primary key.
-func (r *Repository[T, ID]) reload(ctx context.Context, v reflect.Value) (bool, error) {
+func (r store) reload(ctx context.Context, v reflect.Value) (bool, error) {
 	return r.reloadBy(ctx, v, []string{r.model.pk.column})
 }
 
 // setGeneratedKey stores the auto increment value of an insert in the primary key field.
-func (r *Repository[T, ID]) setGeneratedKey(key reflect.Value, result stdsql.Result) error {
+func (r store) setGeneratedKey(key reflect.Value, result stdsql.Result) error {
 	id, err := result.LastInsertId()
 	if err != nil {
 		return err
@@ -195,7 +205,7 @@ func (r *Repository[T, ID]) setGeneratedKey(key reflect.Value, result stdsql.Res
 	return nil
 }
 
-func (r *Repository[T, ID]) queryInto(ctx context.Context, b *sqlBuilder, v reflect.Value) (bool, error) {
+func (r store) queryInto(ctx context.Context, b *sqlBuilder, v reflect.Value) (bool, error) {
 	rows, err := r.db.query(ctx, b.sql.String(), b.args)
 	if err != nil {
 		return false, err

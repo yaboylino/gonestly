@@ -121,3 +121,58 @@ func TestPathName(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateRelations(t *testing.T) {
+	dir := t.TempDir()
+	source := `package blog
+
+import "example.com/shop/internal/people"
+
+type Post struct {
+	ID       int64            ` + "`db:\"id\"`" + `
+	AuthorID int64            ` + "`db:\"author_id\"`" + `
+	Author   *people.Person   ` + "`rel:\"author_id\"`" + `
+	Remarks  []Remark         ` + "`rel:\"post_id\" db:\"-\"`" + `
+	Editor   *people.Person   ` + "`rel:\"editor_id,references=id\"`" + `
+	private  []Remark         ` + "`rel:\"post_id\"`" + `
+}
+
+type Remark struct {
+	ID     int64 ` + "`db:\"id\"`" + `
+	PostID int64 ` + "`db:\"post_id\"`" + `
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "model.go"), []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Generate(dir); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, FileName))
+	want := `// PostRelations are the relations of Post, for Include and Load.
+var PostRelations = struct {
+	Author  sql.Rel[Post, people.Person]
+	Remarks sql.Rel[Post, Remark]
+	Editor  sql.Rel[Post, people.Person]
+}{
+	Author:  sql.Relation[Post, people.Person]("Author"),
+	Remarks: sql.Relation[Post, Remark]("Remarks"),
+	Editor:  sql.Relation[Post, people.Person]("Editor"),
+}
+`
+	if !strings.Contains(string(got), want) {
+		t.Errorf("generated:\n%s\nwant it to contain:\n%s", got, want)
+	}
+	// The relation fields are not columns, and a model without relations has no variable.
+	if strings.Contains(string(got), "Author sql.Column") || strings.Contains(string(got), "RemarkRelations") || !strings.Contains(string(got), `"example.com/shop/internal/people"`) {
+		t.Errorf("generated:\n%s", got)
+	}
+
+	bad := "package blog\n\ntype Post struct {\n\tID int64 `db:\"id\"`\n\tAuthor string `rel:\"author_id\"`\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "model.go"), []byte(bad), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Generate(dir); err == nil || !strings.Contains(err.Error(), "Post: a relation is a slice of structs or a pointer to a struct") {
+		t.Errorf("a relation that is a string = %v", err)
+	}
+}

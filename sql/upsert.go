@@ -103,7 +103,7 @@ func (r *Repository[T, ID]) insertAll(ctx context.Context, values []T, conflict 
 }
 
 // insertFields are the fields to insert for a row: all but a zero key and zero defaults.
-func (r *Repository[T, ID]) insertFields(row reflect.Value) []*field {
+func (r store) insertFields(row reflect.Value) []*field {
 	var fields []*field
 	for _, f := range r.model.fields {
 		if (f.pk || f.dbValue) && row.FieldByIndex(f.index).IsZero() {
@@ -114,7 +114,7 @@ func (r *Repository[T, ID]) insertFields(row reflect.Value) []*field {
 	return fields
 }
 
-func (r *Repository[T, ID]) writeInsert(b *sqlBuilder, fields []*field, rows []reflect.Value) {
+func (r store) writeInsert(b *sqlBuilder, fields []*field, rows []reflect.Value) {
 	b.write("INSERT INTO ")
 	b.ident(r.model.table)
 	if len(fields) == 0 {
@@ -145,7 +145,7 @@ func (r *Repository[T, ID]) writeInsert(b *sqlBuilder, fields []*field, rows []r
 }
 
 // conflictColumns checks the columns that identify an existing row; the default is the key.
-func (r *Repository[T, ID]) conflictColumns(columns []string) ([]string, error) {
+func (r store) conflictColumns(columns []string) ([]string, error) {
 	if len(columns) == 0 {
 		return []string{r.model.pk.column}, nil
 	}
@@ -158,7 +158,7 @@ func (r *Repository[T, ID]) conflictColumns(columns []string) ([]string, error) 
 }
 
 // updateColumns are the inserted columns that an upsert overwrites in an existing row.
-func (r *Repository[T, ID]) updateColumns(fields []*field, conflict []string) []string {
+func (r store) updateColumns(fields []*field, conflict []string) []string {
 	var columns []string
 	for _, f := range fields {
 		if !f.pk && !slices.Contains(conflict, f.column) {
@@ -169,7 +169,7 @@ func (r *Repository[T, ID]) updateColumns(fields []*field, conflict []string) []
 }
 
 // autoKey is the primary key column when its type is a number that a database can generate.
-func (r *Repository[T, ID]) autoKey() string {
+func (r store) autoKey() string {
 	if key := r.model.typ.FieldByIndex(r.model.pk.index).Type; key.Kind() >= reflect.Int && key.Kind() <= reflect.Uint64 {
 		return r.model.pk.column
 	}
@@ -177,7 +177,7 @@ func (r *Repository[T, ID]) autoKey() string {
 }
 
 // reloadBy fills v with the stored row whose columns have the values of v.
-func (r *Repository[T, ID]) reloadBy(ctx context.Context, v reflect.Value, columns []string) (bool, error) {
+func (r store) reloadBy(ctx context.Context, v reflect.Value, columns []string) (bool, error) {
 	b := &sqlBuilder{dialect: r.db.dialect}
 	b.write("SELECT ")
 	r.columns(b)

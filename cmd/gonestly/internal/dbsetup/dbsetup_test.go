@@ -1,11 +1,19 @@
 package dbsetup
 
 import (
+	"context"
+	"crypto/rand"
 	stdsql "database/sql"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 func TestValidate(t *testing.T) {
@@ -91,30 +99,58 @@ func TestCreateSQLite(t *testing.T) {
 	}
 }
 
+// serverConfig reads the server from the connection string that the tests of the sql module
+// use as well: GONESTLY_TEST_POSTGRES as a URL, and GONESTLY_TEST_MYSQL as user:password@tcp(host:port)/db.
+func serverConfig(t *testing.T, kind, env string) Config {
+	t.Helper()
+	raw := os.Getenv(env)
+	cfg := Config{Kind: kind}
+	switch kind {
+	case "postgres":
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg.Host, cfg.User = u.Hostname(), u.User.Username()
+		cfg.Password, _ = u.User.Password()
+		cfg.Port, _ = strconv.Atoi(u.Port())
+	default:
+		c, err := mysql.ParseDSN(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		host, port, _ := net.SplitHostPort(c.Addr)
+		cfg.Host, cfg.User, cfg.Password = host, c.User, c.Passwd
+		cfg.Port, _ = strconv.Atoi(port)
+	}
+	return cfg
+}
+
 // The server tests run against the databases of make databases, like the tests of the sql module.
 func TestCreateOnServers(t *testing.T) {
-	for _, tt := range []struct {
-		kind, env string
-		port      int
-		password  string
-		user      string
-	}{
-		{"postgres", "GONESTLY_TEST_POSTGRES", 55432, "gonestly", "postgres"},
-		{"mysql", "GONESTLY_TEST_MYSQL", 53306, "gonestly", "root"},
+	for _, tt := range []struct{ kind, env string }{
+		{"postgres", "GONESTLY_TEST_POSTGRES"},
+		{"mysql", "GONESTLY_TEST_MYSQL"},
 	} {
 		t.Run(tt.kind, func(t *testing.T) {
 			if os.Getenv(tt.env) == "" {
 				t.Skip("set " + tt.env + " to run this test against a server")
 			}
-			name := "dbsetup_" + strings.ToLower(strings.ReplaceAll(t.Name(), "/", "_")) + "_" + strings.ToLower(filepath.Base(t.TempDir()))
-			name = strings.NewReplacer("-", "_").Replace(name[:min(len(name), 60)])
-			cfg := Config{Kind: tt.kind, Host: "127.0.0.1", Port: tt.port, User: tt.user, Password: tt.password, Name: name}
+			cfg := serverConfig(t, tt.kind, tt.env)
+			cfg.Name = "dbsetup_" + strings.ToLower(rand.Text())
+			name := cfg.Name
 			t.Cleanup(func() {
 				db, err := stdsql.Open(cfg.Driver(), cfg.dsn(map[string]string{"postgres": "postgres"}[tt.kind], cfg.Password))
-				if err == nil {
-					quote := map[string]string{"postgres": `"`, "mysql": "`"}[tt.kind]
-					_, _ = db.ExecContext(t.Context(), "DROP DATABASE "+quote+name+quote)
-					_ = db.Close()
+				if err != nil {
+					return
+				}
+				defer db.Close()
+				// The context of the test has ended by now, so the cleanup has its own.
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				quote := map[string]string{"postgres": `"`, "mysql": "`"}[tt.kind]
+				if _, err := db.ExecContext(ctx, "DROP DATABASE "+quote+name+quote); err != nil {
+					t.Errorf("dropping the test database: %v", err)
 				}
 			})
 

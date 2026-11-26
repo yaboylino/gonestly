@@ -219,9 +219,9 @@ func TestIncludeWithManyKeys(t *testing.T) {
 }
 
 type Topic struct {
-	ID       int64      `db:"id"`
-	Name     string     `db:"name"`
-	ParentID *int64     `db:"parent_id"`
+	ID       int64   `db:"id"`
+	Name     string  `db:"name"`
+	ParentID *int64  `db:"parent_id"`
 	Parent   *Topic  `rel:"parent_id"`
 	Children []Topic `rel:"parent_id"`
 }
@@ -300,4 +300,78 @@ func TestRelationDeclarations(t *testing.T) {
 			t.Errorf("the error misses %q:\n%v", want, err)
 		}
 	}
+}
+
+func TestCreateNested(t *testing.T) {
+	eachDatabase(t, func(t *testing.T, db *sql.DB) {
+		exec(t, db,
+			"CREATE TABLE bloggers (id "+autoID(db)+", name VARCHAR(100) NOT NULL)",
+			"CREATE TABLE blog_posts (id "+autoID(db)+", blogger_id BIGINT NOT NULL, editor_id BIGINT, title VARCHAR(100) NOT NULL UNIQUE)",
+			"CREATE TABLE remarks (id "+autoID(db)+", post_id BIGINT NOT NULL, text VARCHAR(100) NOT NULL)",
+			"CREATE TABLE biographies (id "+autoID(db)+", blogger_id BIGINT NOT NULL, about VARCHAR(100) NOT NULL)",
+		)
+		ctx := t.Context()
+		bloggers, _ := sql.NewRepository[Blogger, int64](db)
+		posts, _ := sql.NewRepository[BlogPost, int64](db)
+
+		ada := Blogger{
+			Name: "Ada",
+			Bio:  &Biography{About: "Mathematician"},
+			Posts: []BlogPost{
+				{Title: "Engines", Remarks: []Remark{{Text: "great"}, {Text: "more"}}},
+				{Title: "Notes"},
+			},
+		}
+		if err := bloggers.CreateNested(ctx, &ada); err != nil {
+			t.Fatal(err)
+		}
+		// Every row has its generated key, and the rows below carry the key of the row above.
+		if ada.ID == 0 || ada.Bio.ID == 0 || ada.Bio.BloggerID != ada.ID || len(ada.Posts) != 2 ||
+			ada.Posts[0].ID == 0 || ada.Posts[0].BloggerID != ada.ID || ada.Posts[0].Remarks[1].PostID != ada.Posts[0].ID {
+			t.Errorf("ada = %+v", ada)
+		}
+		loaded, err := sql.From[Blogger](db).Include(bloggerPosts.With(postRemarks), bloggerBio).Where(sql.Col[int64]("id").Eq(ada.ID)).First(ctx)
+		if err != nil || len(loaded.Posts) != 2 || len(loaded.Posts[0].Remarks) != 2 || loaded.Bio == nil {
+			t.Errorf("stored = %+v, %v", loaded, err)
+		}
+
+		// A row that belongs to another one creates it first when it is new, and uses it when it exists.
+		fresh := BlogPost{Title: "Compilers", Author: &Blogger{Name: "Grace"}}
+		if err := posts.CreateNested(ctx, &fresh); err != nil || fresh.Author.ID == 0 || fresh.BloggerID != fresh.Author.ID {
+			t.Errorf("a post with a new author = %+v, %v", fresh, err)
+		}
+		existing := BlogPost{Title: "Kernels", Author: &ada, Editor: &Blogger{Name: "Linus"}}
+		before, _ := bloggers.Count(ctx)
+		if err := posts.CreateNested(ctx, &existing); err != nil || existing.BloggerID != ada.ID || existing.EditorID == nil || *existing.EditorID != existing.Editor.ID {
+			t.Errorf("a post with an existing author = %+v, %v", existing, err)
+		}
+		if after, _ := bloggers.Count(ctx); after != before+1 {
+			t.Errorf("bloggers went from %d to %d, want one more (the editor)", before, after)
+		}
+
+		// One failing row undoes everything, also the rows that were stored before it.
+		before, _ = bloggers.Count(ctx)
+		failing := Blogger{Name: "Failing", Posts: []BlogPost{{Title: "Unique"}, {Title: "Unique"}}}
+		if err := bloggers.CreateNested(ctx, &failing); !errors.Is(err, sql.ErrConflict) || !strings.Contains(err.Error(), "creating Blogger.Posts") {
+			t.Errorf("a duplicate = %v", err)
+		}
+		if after, _ := bloggers.Count(ctx); after != before {
+			t.Errorf("the blogger was kept: %d -> %d", before, after)
+		}
+		if n, _ := posts.Count(ctx, sql.Col[string]("title").Eq("Unique")); n != 0 {
+			t.Errorf("a post was kept: %d", n)
+		}
+
+		// Rows that point at each other are inserted once.
+		cycle := Blogger{Name: "Cycle"}
+		post := BlogPost{Title: "Loop", Author: &cycle}
+		cycle.Posts = []BlogPost{post}
+		cycle.Posts[0].Author = &cycle
+		if err := bloggers.CreateNested(ctx, &cycle); err != nil || cycle.Posts[0].BloggerID != cycle.ID {
+			t.Errorf("a cycle = %+v, %v", cycle, err)
+		}
+		if n, _ := posts.Count(ctx, sql.Col[string]("title").Eq("Loop")); n != 1 {
+			t.Errorf("the post of a cycle was stored %d times", n)
+		}
+	})
 }
