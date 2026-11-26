@@ -6,6 +6,14 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Added
+
+- `gonestly add database`, which asks for the type of database (SQLite, MySQL or PostgreSQL)
+  and for the host, port, user, password and name, creates the database on its server and
+  connects the project to it: the connection string in `.env`, the sql module in the root
+  module, the driver and a migrations directory. Without a terminal every detail comes from
+  a flag and the password from `GONESTLY_DB_PASSWORD`.
+
 ## [0.2.0] - 2026-11-26
 
 ### Added
