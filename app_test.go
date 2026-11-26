@@ -1,6 +1,7 @@
 package gonestly_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -170,7 +171,8 @@ func TestInjectsContextAndLogger(t *testing.T) {
 			return &database{}
 		}),
 	}
-	logger := slog.New(slog.DiscardHandler)
+	var logged bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logged, nil))
 	app, err := gonestly.New(root, gonestly.WithLogger(logger))
 	if err != nil {
 		t.Fatal(err)
@@ -182,7 +184,8 @@ func TestInjectsContextAndLogger(t *testing.T) {
 	if gotCtx.Value(key{}) != "value" {
 		t.Error("the start context was not injected")
 	}
-	if gotLogger != logger {
+	gotLogger.Info("from a provider")
+	if !strings.Contains(logged.String(), "from a provider") {
 		t.Error("the configured logger was not injected")
 	}
 }

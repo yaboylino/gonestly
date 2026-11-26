@@ -68,6 +68,11 @@ func TestProjectLifecycle(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "DELETE   /products/{id}   products.NewController in module \"products\"") {
 		t.Errorf("routes:\n%s", out)
 	}
+	t.Setenv("LOG_LEVEL", "loud")
+	if out, code := run(t, shop, "routes"); code == 0 || !strings.Contains(out, `the log level "loud"`) {
+		t.Errorf("a bad log level:\n%s", out)
+	}
+	t.Setenv("LOG_LEVEL", "")
 	out, code = run(t, shop, "openapi", "-o", "openapi.json")
 	if code != 0 {
 		t.Fatalf("openapi:\n%s", out)

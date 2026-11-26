@@ -142,6 +142,8 @@ func newServer(controllers []controllerInstance, config ServerConfig, openAPI Op
 // recovered answers a panic in a handler, guard, interceptor or middleware with a 500.
 func (s *server) recovered(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, _ := withLogFields(r.Context())
+		r = r.WithContext(ctx)
 		defer func() {
 			v := recover()
 			if v == nil {
@@ -203,6 +205,11 @@ func (s *server) routeHandler(rt *route) http.Handler {
 	interceptors := append(slices.Clip(s.config.Interceptors), rt.interceptors...)
 
 	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if f := logFieldsFrom(r.Context()); f != nil {
+			f.mu.Lock()
+			f.route = rt.path
+			f.mu.Unlock()
+		}
 		ctx := context.WithValue(r.Context(), requestKey{}, &requestState{request: r, header: w.Header()})
 		for _, guard := range guards {
 			next, err := guard.Check(ctx, r)

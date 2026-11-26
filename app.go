@@ -69,6 +69,7 @@ func New(root *Module, opts ...Option) (*App, error) {
 		opt(&o)
 	}
 
+	o.logger = slog.New(LogHandler(o.logger.Handler()))
 	app := &App{logger: o.logger, shutdownTimeout: o.shutdownTimeout, shutdownDelay: o.shutdownDelay, listen: o.listen, done: make(chan struct{})}
 	core := &Module{
 		Name:      coreModuleName,

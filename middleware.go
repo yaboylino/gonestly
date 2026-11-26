@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"log/slog"
+	"net"
 	"net/http"
+	"path"
 	"time"
 )
 
@@ -28,7 +30,7 @@ func RequestID() Middleware {
 				id = rand.Text()
 			}
 			w.Header().Set(RequestIDHeader, id)
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDKey{}, id)))
+			next.ServeHTTP(w, r.WithContext(WithRequestID(r.Context(), id)))
 		})
 	}
 }
@@ -57,7 +59,7 @@ func validRequestID(id string) bool {
 // carries the ID, for code that runs outside the RequestID middleware.
 func requestAttrs(w http.ResponseWriter, r *http.Request) []any {
 	attrs := []any{slog.String("method", r.Method), slog.String("path", r.URL.Path)}
-	id := RequestIDFrom(r.Context())
+	id := requestIDOf(r.Context())
 	if id == "" {
 		id = w.Header().Get(RequestIDHeader)
 	}
@@ -67,12 +69,53 @@ func requestAttrs(w http.ResponseWriter, r *http.Request) []any {
 	return attrs
 }
 
-// AccessLog is middleware that logs every request when it has been answered, with its
-// method, path, status, size, duration and request ID: at error level for a 5xx status and
-// at info level otherwise.
-func AccessLog(logger *slog.Logger) Middleware {
+// AccessLogOption changes what AccessLog logs.
+type AccessLogOption func(*accessLog)
+
+type accessLog struct {
+	skip []string
+	slow time.Duration
+}
+
+// SkipPaths leaves the requests for these paths out of the access log, such as the health
+// checks that a load balancer calls every few seconds. A path can use * as in path.Match:
+// "/health/*".
+func SkipPaths(patterns ...string) AccessLogOption {
+	return func(a *accessLog) { a.skip = append(a.skip, patterns...) }
+}
+
+// SlowAfter logs a request that takes longer than d at warn level, with slow=true, so slow
+// requests stand out and can be alerted on.
+func SlowAfter(d time.Duration) AccessLogOption {
+	return func(a *accessLog) { a.slow = d }
+}
+
+func (a *accessLog) skipped(p string) bool {
+	for _, pattern := range a.skip {
+		if ok, _ := path.Match(pattern, p); ok || pattern == p {
+			return true
+		}
+	}
+	return false
+}
+
+// AccessLog is middleware that logs every request when it has been answered: method, path, the
+// route that handled it, status, size, duration, the address of the client and its user agent,
+// and the request ID, plus whatever code added with LogAttrs. It logs at error level for a 5xx
+// status, at warn level for a slow request (see SlowAfter) and at info level otherwise.
+//
+// The address is the one of the connection: behind a proxy, that is the proxy.
+func AccessLog(logger *slog.Logger, opts ...AccessLogOption) Middleware {
+	var config accessLog
+	for _, opt := range opts {
+		opt(&config)
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if config.skipped(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			start := time.Now()
 			recorder := &statusRecorder{ResponseWriter: w}
 			defer func() {
@@ -85,15 +128,30 @@ func AccessLog(logger *slog.Logger) Middleware {
 				case status == 0:
 					status = http.StatusOK
 				}
+				took := time.Since(start)
 				level := slog.LevelInfo
-				if status >= http.StatusInternalServerError {
-					level = slog.LevelError
-				}
-				attrs := append(requestAttrs(w, r),
+				attrs := requestAttrs(w, r)
+				attrs = append(attrs,
 					slog.Int("status", status),
 					slog.Int64("bytes", recorder.bytes),
-					slog.Duration("duration", time.Since(start)),
+					slog.Duration("duration", took),
 				)
+				if f := logFieldsFrom(r.Context()); f != nil {
+					if _, route, _ := f.snapshot(); route != "" {
+						attrs = append(attrs, slog.String("route", route))
+					}
+				}
+				attrs = append(attrs, slog.String("remote_addr", remoteHost(r)))
+				if agent := r.UserAgent(); agent != "" {
+					attrs = append(attrs, slog.String("user_agent", agent))
+				}
+				switch {
+				case status >= http.StatusInternalServerError:
+					level = slog.LevelError
+				case config.slow > 0 && took > config.slow:
+					level = slog.LevelWarn
+					attrs = append(attrs, slog.Bool("slow", true))
+				}
 				logger.Log(r.Context(), level, "request", attrs...)
 				if v != nil {
 					panic(v)
@@ -102,6 +160,14 @@ func AccessLog(logger *slog.Logger) Middleware {
 			next.ServeHTTP(recorder, r)
 		})
 	}
+}
+
+func remoteHost(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 // statusRecorder remembers the status and size of a response.

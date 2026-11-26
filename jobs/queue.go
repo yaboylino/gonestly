@@ -45,6 +45,7 @@ type record struct {
 	LockedUntil *int64  `db:"locked_until"`
 	LastError   *string `db:"last_error"`
 	UniqueKey   *string `db:"unique_key"`
+	RequestID   *string `db:"request_id"`
 	CreatedAt   int64   `db:"created_at"`
 	FinishedAt  *int64  `db:"finished_at"`
 }

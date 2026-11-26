@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/yaboylino/gonestly"
 	"github.com/yaboylino/gonestly/sql"
 )
 
@@ -40,6 +41,11 @@ func (q *Queue) execute(ctx context.Context, job record) {
 	}
 	runCtx, cancel := context.WithTimeout(ctx, h.settings.timeout)
 	defer cancel()
+	if job.RequestID != nil {
+		// The job continues the request that enqueued it, so its logs can be followed from there.
+		runCtx = gonestly.WithRequestID(runCtx, *job.RequestID)
+		logger = logger.With(slog.String("request_id", *job.RequestID))
+	}
 	runCtx = context.WithValue(runCtx, infoKey{}, Info{ID: job.ID, Name: job.Name, Attempt: job.Attempts, MaxAttempts: job.MaxAttempts})
 
 	start := q.now()

@@ -22,6 +22,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
+	"github.com/yaboylino/gonestly"
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/term"
 )
 
@@ -387,6 +388,7 @@ func (s *Server) start() error {
 	// The application outlives the cycle that started it; stop ends it with a signal instead.
 	cmd := exec.Command(s.binary, s.opts.Args...) //nolint:noctx // see above
 	cmd.Dir = s.opts.Root
+	cmd.Env = append(os.Environ(), gonestly.DevEnv+"=1")
 	cmd.Stdout = s.opts.Stdout
 	cmd.Stderr = s.opts.Stderr
 	cmd.Stdin = nil

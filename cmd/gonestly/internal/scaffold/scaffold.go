@@ -160,6 +160,7 @@ func NewProject(ctx context.Context, opts ProjectOptions, printer *term.Printer)
 		{"new/main.go.tmpl", "main.go"},
 		{"new/internal/app/module.go.tmpl", "internal/app/module.go"},
 		{"new/internal/app/config.go.tmpl", "internal/app/config.go"},
+		{"new/internal/app/logger.go.tmpl", "internal/app/logger.go"},
 		{"new/internal/health/module.go.tmpl", "internal/health/module.go"},
 		{"new/internal/health/controller.go.tmpl", "internal/health/controller.go"},
 		{"new/internal/health/controller_test.go.tmpl", "internal/health/controller_test.go"},
