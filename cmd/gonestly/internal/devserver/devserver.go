@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -215,8 +216,8 @@ func (s *Server) ignored(path string) bool {
 // relevant reports whether a file affects the program: Go code, the module files, the .env
 // file, or a file that a go:embed pattern puts into the binary. Other files, such as logs,
 // uploads or a SQLite database the application writes, never cause a restart.
-func (s *Server) relevant(path string) bool {
-	base := filepath.Base(path)
+func (s *Server) relevant(file string) bool {
+	base := filepath.Base(file)
 	switch {
 	case strings.HasSuffix(base, ".go"), base == "go.mod", base == "go.sum", base == ".env", strings.HasPrefix(base, ".env."):
 		return true
@@ -225,21 +226,22 @@ func (s *Server) relevant(path string) bool {
 	embeds := s.embeds
 	s.mu.Unlock()
 	for _, e := range embeds {
-		rel, err := filepath.Rel(e.dir, path)
+		rel, err := filepath.Rel(e.dir, file)
 		if err != nil || strings.HasPrefix(rel, "..") {
 			continue
 		}
 		rel = filepath.ToSlash(rel)
+		// Embed patterns use slashes on every system, so they are matched with path, not filepath.
 		for _, pattern := range e.patterns {
 			pattern = strings.TrimPrefix(pattern, "all:")
 			if rel == pattern || strings.HasPrefix(rel, pattern+"/") {
 				return true
 			}
-			if ok, _ := filepath.Match(pattern, rel); ok {
+			if ok, _ := path.Match(pattern, rel); ok {
 				return true
 			}
 			if first, _, found := strings.Cut(rel, "/"); found {
-				if ok, _ := filepath.Match(pattern, first); ok {
+				if ok, _ := path.Match(pattern, first); ok {
 					return true
 				}
 			}
