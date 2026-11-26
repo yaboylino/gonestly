@@ -1,0 +1,13 @@
+.PHONY: dev test fmt vet
+
+dev:
+	gonestly dev
+
+test:
+	go test ./...
+
+fmt:
+	gofmt -s -w .
+
+vet:
+	go vet ./...

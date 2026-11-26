@@ -17,9 +17,13 @@ documentation is served at http://localhost:3000/docs.
 | `gonestly generate resource <name>` | Adds a complete resource with routes, service and table |
 | `gonestly routes` | Lists every route |
 | `go test ./...` | Runs the tests |
+| `make fmt` | Formats the code with gofmt |
 {{- if .Database}}
 | `gonestly migrate create <name>` | Adds a migration |
 | `gonestly migrate status` | Shows which migrations are applied |
 {{- end}}
 
 Settings are read from environment variables and the `.env` file; see `.env.example`.
+
+Go code is indented with tabs, shown four wide: `.editorconfig` and `.vscode/settings.json` set that up and
+format on save. In GoLand, turn on "Reformat code" under Settings, Tools, Actions on Save.

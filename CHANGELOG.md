@@ -59,6 +59,9 @@ All notable changes to this project are documented in this file. The format is b
   agent in every access log line.
 - `gonestly add jobs` creates the jobs table as a migration for the database of the project and
   adds the module to the root module.
+- `gonestly new` writes an `.editorconfig` (Go indented with tabs, four wide), `.vscode/settings.json`
+  that formats Go on save and organizes imports, and a `Makefile` with `dev`, `test`, `fmt` and
+  `vet`.
 
 ### Changed
 
