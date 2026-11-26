@@ -5,9 +5,9 @@ go 1.26.0
 toolchain go1.26.11
 
 require (
-	github.com/yaboylino/gonestly v0.3.0
-	github.com/yaboylino/gonestly/sql v0.3.0
-	github.com/yaboylino/gonestly/validator v0.3.0
+	github.com/yaboylino/gonestly v0.4.0
+	github.com/yaboylino/gonestly/sql v0.4.0
+	github.com/yaboylino/gonestly/validator v0.4.0
 	modernc.org/sqlite v1.63.0
 )
 
