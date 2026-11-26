@@ -6,6 +6,36 @@ import (
 	"reflect"
 )
 
+// scanStructs reads every row into a struct of model m, and returns them as a slice of its type.
+func scanStructs(db *DB, rows *stdsql.Rows, m *model) (reflect.Value, error) {
+	defer rows.Close()
+	result := reflect.Zero(reflect.SliceOf(m.typ))
+	columns, err := rows.Columns()
+	if err != nil {
+		return result, err
+	}
+	fields := make([]*field, len(columns))
+	for i, column := range columns {
+		f, ok := m.byColumn[column]
+		if !ok {
+			return result, fmt.Errorf("sql: the column %q has no field in %s; add a field with db:%q", column, m.typ.Name(), column)
+		}
+		fields[i] = f
+	}
+	dest := make([]any, len(columns))
+	for rows.Next() {
+		row := reflect.New(m.typ).Elem()
+		for i, f := range fields {
+			dest[i] = row.FieldByIndex(f.index).Addr().Interface()
+		}
+		if err := rows.Scan(dest...); err != nil {
+			return result, fmt.Errorf("sql: scanning a row into %s: %w", m.typ, err)
+		}
+		result = reflect.Append(result, row)
+	}
+	return result, db.wrap(rows.Err())
+}
+
 // scanRows reads every row into a T. A struct T is filled by column name; any other T is
 // read from the single column of the result.
 func scanRows[T any](db *DB, rows *stdsql.Rows) ([]T, error) {

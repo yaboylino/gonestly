@@ -67,6 +67,11 @@ jobs:
         env:
           GONESTLY_TEST_POSTGRES: postgres://postgres:gonestly@localhost:5432/gonestly?sslmode=disable
         run: go test -race -shuffle=on -v ./... 2>&1 | tee /dev/stderr | (! grep -q "SKIP.*postgres")
+      - name: Create databases from the CLI
+        working-directory: cmd/gonestly
+        env:
+          GONESTLY_TEST_POSTGRES: postgres://postgres:gonestly@localhost:5432/gonestly?sslmode=disable
+        run: go test -race -shuffle=on -v -run TestCreateOnServers/postgres ./internal/dbsetup 2>&1 | tee /dev/stderr | (! grep -q "SKIP")
 
   mysql:
     name: SQL against ${{ matrix.name }}
@@ -101,6 +106,11 @@ jobs:
         env:
           GONESTLY_TEST_MYSQL: root:gonestly@tcp(127.0.0.1:3306)/gonestly
         run: go test -race -shuffle=on -v ./... 2>&1 | tee /dev/stderr | (! grep -q "SKIP.*mysql")
+      - name: Create databases from the CLI
+        working-directory: cmd/gonestly
+        env:
+          GONESTLY_TEST_MYSQL: root:gonestly@tcp(127.0.0.1:3306)/gonestly
+        run: go test -race -shuffle=on -v -run TestCreateOnServers/mysql ./internal/dbsetup 2>&1 | tee /dev/stderr | (! grep -q "SKIP")
 
   lint:
     name: Lint

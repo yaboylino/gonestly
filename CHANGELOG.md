@@ -6,6 +6,19 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Added
+
+- Relations between models: a field tagged `rel` holds the related rows, and `Include`,
+  `Repository.Load` and `LoadAll` fill them with one query per relation, nested ones
+  included, however many rows there are. `gonestly generate columns` writes a typed value for
+  every relation, and `Repository.CreateNested` inserts a row with the rows in its relation
+  fields in one transaction.
+- `gonestly add database`, which asks for the type of database (SQLite, MySQL or PostgreSQL)
+  and for the host, port, user, password and name, creates the database on its server and
+  connects the project to it: the connection string in `.env`, the sql module in the root
+  module, the driver and a migrations directory. Without a terminal every detail comes from
+  a flag and the password from `GONESTLY_DB_PASSWORD`.
+
 ## [0.2.0] - 2026-11-26
 
 ### Added

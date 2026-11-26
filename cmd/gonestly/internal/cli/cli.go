@@ -54,6 +54,7 @@ func newRoot(stdout, stderr io.Writer) *cobra.Command {
 	root.AddCommand(
 		newCommand(printer),
 		generateCommand(printer),
+		addCommand(printer, stdout),
 		devCommand(printer, stdout, stderr),
 		migrateCommand(printer),
 		inspectCommand("routes", "List every route of the application", printer, stdout, stderr),

@@ -211,3 +211,65 @@ func addImport(path string, src []byte, importPath string) ([]byte, error) {
 func Name(importPath string) string {
 	return importPath[strings.LastIndexByte(importPath, '/')+1:]
 }
+
+// AddImport adds an import to the file, blank when name is "_". It reports whether the file
+// changed.
+func AddImport(path, importPath, name string) (bool, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, src, parser.ParseComments)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", path, err)
+	}
+	if !astutil.AddNamedImport(fset, file, name, importPath) {
+		return false, nil
+	}
+	var buf bytes.Buffer
+	if err := format.Node(&buf, fset, file); err != nil {
+		return false, err
+	}
+	return true, os.WriteFile(path, buf.Bytes(), 0o644) //nolint:gosec // source files are meant to be readable
+}
+
+// AddStructField adds a field declaration, such as `DatabaseURL string `env:"DATABASE_URL"“, at
+// the end of a struct type. It reports whether the file changed; a field with the same name is
+// left alone.
+func AddStructField(path, structName, declaration string) (bool, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, src, parser.ParseComments)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", path, err)
+	}
+	var st *ast.StructType
+	ast.Inspect(file, func(n ast.Node) bool {
+		if spec, ok := n.(*ast.TypeSpec); ok && spec.Name.Name == structName {
+			st, _ = spec.Type.(*ast.StructType)
+		}
+		return st == nil
+	})
+	if st == nil {
+		return false, fmt.Errorf("%s has no struct type %s", path, structName)
+	}
+	name, _, _ := strings.Cut(strings.TrimSpace(declaration), " ")
+	for _, f := range st.Fields.List {
+		for _, n := range f.Names {
+			if n.Name == name {
+				return false, nil
+			}
+		}
+	}
+	at := fset.Position(st.Fields.Closing).Offset
+	edited := slices.Concat(src[:at], []byte("\t"+declaration+"\n"), src[at:])
+	formatted, err := format.Source(edited)
+	if err != nil {
+		return false, fmt.Errorf("%s: the edited file does not compile: %w", path, err)
+	}
+	return true, os.WriteFile(path, formatted, 0o644) //nolint:gosec // source files are meant to be readable
+}

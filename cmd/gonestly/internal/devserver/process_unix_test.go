@@ -21,9 +21,9 @@ import (
 )
 
 func main() {
-	fmt.Println("own group:", syscall.Getpgrp() == os.Getpid())
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)
+	fmt.Println("own group:", syscall.Getpgrp() == os.Getpid())
 	<-stop
 	fmt.Println("stopped")
 }

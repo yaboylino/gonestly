@@ -40,9 +40,10 @@ import (
 )
 
 func main() {
-	fmt.Println("running %s")
+	// The handler is set before the program says it runs, so a stop right after is graceful.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)
+	fmt.Println("running %s")
 	<-stop
 	fmt.Println("stopped %s")
 }
