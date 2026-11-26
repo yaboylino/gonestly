@@ -4,7 +4,7 @@ set -euo pipefail
 
 version=${1:?usage: scripts/release.sh v0.1.0}
 module=github.com/yaboylino/gonestly
-libraries=(validator sql jwt jobs password)
+libraries=(validator sql jwt jobs password cache redis)
 
 fail() { echo "release: $*" >&2; exit 1; }
 step() { printf '\n==> %s (%ss)\n' "$1" "$SECONDS"; }
@@ -28,6 +28,7 @@ for library in "${libraries[@]}"; do
 	(cd "$library" && go mod edit -require="$module@$version")
 done
 (cd jobs && go mod edit -require="$module/sql@$version")
+(cd redis && go mod edit -require="$module/cache@$version")
 git commit --quiet --all --message "chore: release $version"
 tags=("$version")
 git tag --annotate "$version" --message "$version"

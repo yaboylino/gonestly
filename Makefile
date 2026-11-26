@@ -5,12 +5,13 @@ GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$
 GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
 # Every Go module in the repository; integrations have their own because of their dependencies.
-MODULES := . validator sql jwt jobs password cmd/gonestly examples/tasks
+MODULES := . validator sql jwt jobs password cache redis cmd/gonestly examples/tasks
 
 # The SQL tests also run against PostgreSQL and MySQL when GONESTLY_TEST_POSTGRES and
 # GONESTLY_TEST_MYSQL are set; `make databases` starts matching databases in Docker.
 POSTGRES_DSN := postgres://postgres:gonestly@127.0.0.1:55432/gonestly?sslmode=disable
 MYSQL_DSN := root:gonestly@tcp(127.0.0.1:53306)/gonestly
+REDIS_URL := redis://127.0.0.1:56379/0
 
 .PHONY: check test test-databases databases cover lint fmt vuln tidy
 
@@ -23,12 +24,13 @@ test:
 
 # test-databases: run the tests, including the SQL tests against the databases of `make databases`
 test-databases:
-	GONESTLY_TEST_POSTGRES="$(POSTGRES_DSN)" GONESTLY_TEST_MYSQL="$(MYSQL_DSN)" $(MAKE) test
+	GONESTLY_TEST_POSTGRES="$(POSTGRES_DSN)" GONESTLY_TEST_MYSQL="$(MYSQL_DSN)" GONESTLY_TEST_REDIS="$(REDIS_URL)" $(MAKE) test
 
-# databases: start PostgreSQL and MySQL containers for the SQL tests
+# databases: start PostgreSQL, MySQL and Redis containers for the tests
 databases:
 	docker run -d --rm --name gonestly-test-pg -e POSTGRES_PASSWORD=gonestly -e POSTGRES_DB=gonestly -p 55432:5432 postgres:17-alpine
 	docker run -d --rm --name gonestly-test-mysql -e MYSQL_ROOT_PASSWORD=gonestly -e MYSQL_DATABASE=gonestly -p 53306:3306 mysql:8.4
+	docker run -d --rm --name gonestly-test-redis -p 56379:6379 redis:7-alpine
 
 # cover: run the tests and open the coverage report
 cover:

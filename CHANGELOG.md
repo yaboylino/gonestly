@@ -16,6 +16,15 @@ All notable changes to this project are documented in this file. The format is b
   without taking one twice, put back what a shutdown interrupted, take over from a process that
   died, and clean up finished jobs. `Stats`, `Failed`, `Retry` and `RunDue` help to operate
   and test.
+- `cache` module: a `Cache` on a pluggable `Store`, with a memory store (size limit, least
+  recently used eviction, expiry) built in. `Remember` loads a missing value once for any number
+  of simultaneous callers and does not store errors, `Get`, `Set`, `Delete`, `DeletePrefix` and
+  `Clear` work on typed values, and a failing store is treated as an empty one. `Responses` is an
+  interceptor that caches GET responses after the guards, with a key per credential unless
+  `SharedAcrossUsers`, and `ETag` is middleware that answers 304 Not Modified. The `cachetest`
+  package checks that a store keeps the contract.
+- `redis` module: a cache store on Redis for instances that share a cache, with a health check
+  and deleting by prefix in batches.
 - API versioning: `Router.Version` registers routes under /v1, /v2 and so on, every response of
   such a route has an `API-Version` header, `ServerConfig.Versioning` lets clients choose with a
   header (with an optional default), and the OpenAPI document can be read per version, with a

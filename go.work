@@ -4,11 +4,13 @@ toolchain go1.26.11
 
 use (
 	.
+	./cache
 	./cmd/gonestly
 	./examples/tasks
 	./jobs
 	./jwt
 	./password
+	./redis
 	./sql
 	./validator
 )
