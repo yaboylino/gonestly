@@ -26,11 +26,16 @@ type TableNamer interface {
 
 // model maps a struct type to a table and its columns.
 type model struct {
-	typ      reflect.Type
-	table    string
-	fields   []*field
-	byColumn map[string]*field
-	pk       *field
+	typ       reflect.Type
+	table     string
+	fields    []*field
+	byColumn  map[string]*field
+	pk        *field
+	relations []*relation
+	byRel     map[string]*relation
+
+	relOnce sync.Once
+	relErr  error
 }
 
 type field struct {
@@ -61,10 +66,21 @@ func buildModel(t reflect.Type) (*model, error) {
 	if !isStructModel(t) {
 		return nil, fmt.Errorf("%w: %s is not a struct", ErrInvalidModel, t)
 	}
-	m := &model{typ: t, byColumn: map[string]*field{}, table: tableName(t)}
+	m := &model{typ: t, byColumn: map[string]*field{}, byRel: map[string]*relation{}, table: tableName(t)}
 	var problems []string
 	for _, sf := range reflect.VisibleFields(t) {
 		if !sf.IsExported() {
+			continue
+		}
+		// A relation field holds related rows; it is never a column, with or without db:"-".
+		if tag, ok := sf.Tag.Lookup("rel"); ok {
+			rel, problem := parseRelation(t, sf, tag)
+			if problem != "" {
+				problems = append(problems, problem)
+			} else {
+				m.relations = append(m.relations, rel)
+				m.byRel[rel.name] = rel
+			}
 			continue
 		}
 		tag, hasTag := sf.Tag.Lookup("db")
@@ -124,6 +140,13 @@ func buildModel(t reflect.Type) (*model, error) {
 	}
 	if len(m.fields) == 0 {
 		problems = append(problems, t.Name()+" has no exported fields to map to columns")
+	}
+	for _, rel := range m.relations {
+		// A pointer is the owner of the key when this model has the column, and otherwise
+		// the other model has it.
+		if rel.kind == hasOne && m.byColumn[rel.key] != nil {
+			rel.kind = belongsTo
+		}
 	}
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidModel, strings.Join(problems, "; "))

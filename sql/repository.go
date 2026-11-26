@@ -31,7 +31,24 @@ func NewRepository[T any, ID comparable](db *DB) (*Repository[T, ID], error) {
 	if pkType := t.FieldByIndex(m.pk.index).Type; !idType.AssignableTo(pkType) {
 		return nil, fmt.Errorf("%w: the primary key %s.%s is a %s, not a %s", ErrInvalidModel, t.Name(), m.pk.name, pkType, idType)
 	}
+	if err := m.resolveRelations(); err != nil {
+		return nil, err
+	}
 	return &Repository[T, ID]{db: db, model: m}, nil
+}
+
+// Load fills the relations of a row that was loaded without them, such as one from FindByID.
+func (r *Repository[T, ID]) Load(ctx context.Context, v *T, paths ...Path[T]) error {
+	return loadRelations(ctx, r.db, r.model, []reflect.Value{reflect.ValueOf(v).Elem()}, includeNodes(paths))
+}
+
+// LoadAll fills the relations of every row of the slice with one query per relation.
+func (r *Repository[T, ID]) LoadAll(ctx context.Context, values []T, paths ...Path[T]) error {
+	refs := make([]reflect.Value, len(values))
+	for i := range values {
+		refs[i] = reflect.ValueOf(values).Index(i)
+	}
+	return loadRelations(ctx, r.db, r.model, refs, includeNodes(paths))
 }
 
 // Query starts a query on the table, for everything beyond the methods of the repository.

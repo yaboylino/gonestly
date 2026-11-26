@@ -19,6 +19,7 @@ type Builder[T any] struct {
 	limit   int
 	offset  int
 	columns []string
+	include []includeNode
 }
 
 // From starts a query on the table of T, selecting every mapped column.
@@ -54,6 +55,18 @@ func (q *Builder[T]) OrderBy(orders ...Order) *Builder[T] {
 	return c
 }
 
+// Include loads relations of the rows with the query: Include(UserRelations.Posts) fills the
+// Posts field of every user. Each relation, also a nested one, costs one more query however
+// many rows there are. Relations are declared with the rel tag; see Repository.
+func (q *Builder[T]) Include(paths ...Path[T]) *Builder[T] {
+	c := q.clone()
+	c.include = append(slices.Clip(c.include), includeNodes(paths)...)
+	if c.err == nil && c.model != nil {
+		c.err = checkNodes(c.model, c.include)
+	}
+	return c
+}
+
 // Limit returns at most n rows.
 func (q *Builder[T]) Limit(n int) *Builder[T] {
 	c := q.clone()
@@ -78,7 +91,15 @@ func (q *Builder[T]) All(ctx context.Context) ([]T, error) {
 	if err != nil {
 		return nil, err
 	}
-	return scanRows[T](q.db, rows)
+	result, err := scanRows[T](q.db, rows)
+	if err != nil || len(q.include) == 0 || len(result) == 0 {
+		return result, err
+	}
+	refs := make([]reflect.Value, len(result))
+	for i := range result {
+		refs[i] = reflect.ValueOf(result).Index(i)
+	}
+	return result, loadRelations(ctx, q.db, q.model, refs, q.include)
 }
 
 // First returns the first matching row, or ErrNotFound.

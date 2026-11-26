@@ -3,9 +3,12 @@ package sql_test
 import (
 	"context"
 	"crypto/rand"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -21,10 +24,47 @@ const (
 	mysqlEnv    = "GONESTLY_TEST_MYSQL"
 )
 
+var counters sync.Map // *sql.DB -> *atomic.Int64
+
+// countHandler counts the queries that a database logs.
+type countHandler struct{ n *atomic.Int64 }
+
+func (countHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h countHandler) Handle(_ context.Context, r slog.Record) error {
+	if r.Message == "sql query" {
+		h.n.Add(1)
+	}
+	return nil
+}
+func (h countHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h countHandler) WithGroup(string) slog.Handler      { return h }
+
+// openCounted opens a database whose queries can be counted with queryCount.
+func openCounted(t *testing.T, opts sql.Options) (*sql.DB, error) {
+	t.Helper()
+	n := new(atomic.Int64)
+	opts.Logger = slog.New(countHandler{n: n})
+	db, err := sql.Open(t.Context(), opts)
+	if err == nil {
+		counters.Store(db, n)
+	}
+	return db, err
+}
+
+// queryCount is the number of queries a database has run so far.
+func queryCount(t *testing.T, db *sql.DB) int {
+	t.Helper()
+	n, ok := counters.Load(db)
+	if !ok {
+		t.Fatal("the database was not opened with openCounted")
+	}
+	return int(n.(*atomic.Int64).Load())
+}
+
 func openSQLite(t *testing.T) *sql.DB {
 	t.Helper()
 	dsn := "file:" + filepath.Join(t.TempDir(), "test.db") + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
-	db, err := sql.Open(t.Context(), sql.Options{Driver: "sqlite", DSN: dsn})
+	db, err := openCounted(t, sql.Options{Driver: "sqlite", DSN: dsn})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +91,7 @@ func openPostgres(t *testing.T) *sql.DB {
 	if strings.Contains(dsn, "?") {
 		separator = "&"
 	}
-	db, err := sql.Open(t.Context(), sql.Options{Driver: "pgx", DSN: dsn + separator + "search_path=" + schema})
+	db, err := openCounted(t, sql.Options{Driver: "pgx", DSN: dsn + separator + "search_path=" + schema})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +120,7 @@ func openMySQL(t *testing.T) *sql.DB {
 	if i := strings.IndexByte(dsn[slash:], '?'); i >= 0 {
 		parameters = dsn[slash+i:]
 	}
-	db, err := sql.Open(t.Context(), sql.Options{Driver: "mysql", DSN: dsn[:slash+1] + name + parameters})
+	db, err := openCounted(t, sql.Options{Driver: "mysql", DSN: dsn[:slash+1] + name + parameters})
 	if err != nil {
 		t.Fatal(err)
 	}
