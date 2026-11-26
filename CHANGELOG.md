@@ -16,6 +16,11 @@ All notable changes to this project are documented in this file. The format is b
   without taking one twice, put back what a shutdown interrupted, take over from a process that
   died, and clean up finished jobs. `Stats`, `Failed`, `Retry` and `RunDue` help to operate
   and test.
+- `EventBus`, an in-process event bus that every module can inject: `Subscribe` registers a
+  handler for a type or an interface, `Publish` runs the handlers in order with the context of
+  the publisher, so they take part in its transaction, and joins their errors. `Async` handlers run
+  in a goroutine of their own, keep the values of the context, log their errors, and are waited
+  for when the application stops.
 - `NewLogger`, which builds the logger from a level and a format (`text`, `json` or `auto`), and
   `LogHandler`, which the application now puts around its logger: every line logged with the
   context of a request, by any provider and by the database, carries its request ID.
