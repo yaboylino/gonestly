@@ -8,6 +8,9 @@ All notable changes to this project are documented in this file. The format is b
 
 ### Added
 
+- `ServerConfig.CORS`, which lets pages on other origins call the API: it answers preflight
+  requests and reports a mistake in the configuration when the application starts. New
+  projects read the origins from `CORS_ORIGINS`.
 - `examples/tasks`, a complete application with two feature modules, a guard, transactions
   across modules and tests.
 

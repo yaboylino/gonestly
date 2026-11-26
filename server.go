@@ -37,6 +37,8 @@ type ServerConfig struct {
 	MaxBodyBytes int64
 	// Middleware wraps every request, including unknown routes; the first is outermost.
 	Middleware []Middleware
+	// CORS lets pages on other origins call the API; see CORSConfig.
+	CORS CORSConfig
 	// Guards run before the guards of every route.
 	Guards []Guard
 	// Interceptors wrap the interceptors of every route; the first is outermost.
@@ -102,6 +104,8 @@ func newServer(controllers []controllerInstance, config ServerConfig, openAPI Op
 	if !openAPI.Disabled {
 		problems = append(problems, openAPIRouteConflict(s.routes, openAPI)...)
 	}
+	cors, corsProblems := newCORS(s.config.CORS)
+	problems = append(problems, corsProblems...)
 	if len(problems) > 0 {
 		return nil, &BuildError{Problems: problems}
 	}
@@ -123,6 +127,10 @@ func newServer(controllers []controllerInstance, config ServerConfig, openAPI Op
 	}
 
 	var handler http.Handler = http.HandlerFunc(s.serveHTTP)
+	// CORS is innermost, so that the middleware sees preflight requests and errors get the headers.
+	if cors != nil {
+		handler = cors.wrap(handler)
+	}
 	for _, mw := range slices.Backward(s.config.Middleware) {
 		handler = mw(handler)
 	}
