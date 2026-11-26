@@ -121,11 +121,11 @@ your application.
 
 - [x] Core: modules, dependency injection, lifecycle hooks, configuration and logging
 - [x] HTTP: router, typed handlers, binding, validation, guards, interceptors and error handling
-- [x] SQL: repositories, typed query builder, transactions and migrations for PostgreSQL and SQLite
+- [x] SQL: repositories, typed query builder, transactions and migrations for PostgreSQL, MySQL and SQLite
 - [x] OpenAPI: a document and Swagger UI generated from every route
 - [x] CLI: `new`, `generate`, `dev` with live rebuild and restart, `migrate`, `routes` and `openapi`
 - [x] Documentation site in English and Dutch
-- [ ] MySQL support and examples
+- [x] MySQL and MariaDB support
 - [ ] First release: `v0.1.0`
 
 ## Contributing

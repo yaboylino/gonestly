@@ -13,6 +13,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/spf13/cobra"
 	_ "modernc.org/sqlite"
@@ -40,7 +41,7 @@ func migrateCommand(printer *term.Printer) *cobra.Command {
 DATABASE_URL in the environment or the .env file, unless --dsn is given.`,
 	}
 	cmd.PersistentFlags().StringVar(&opts.dsn, "dsn", "", "the connection string (default: DATABASE_URL)")
-	cmd.PersistentFlags().StringVar(&opts.driver, "driver", "", "pgx or sqlite (default: inferred from the connection string)")
+	cmd.PersistentFlags().StringVar(&opts.driver, "driver", "", "pgx, mysql or sqlite (default: inferred from the connection string)")
 	cmd.PersistentFlags().StringVar(&opts.dir, "dir", "migrations", "the migrations directory")
 
 	cmd.AddCommand(
@@ -139,9 +140,12 @@ func withMigrator(ctx context.Context, opts migrateOptions, fn func(*sql.Migrato
 	if dsn == "" {
 		return errors.New("no database: set DATABASE_URL in the environment or the .env file, or pass --dsn")
 	}
+	if strings.HasPrefix(dsn, "mysql://") {
+		return errors.New("a MySQL connection string is not a URL; write it as user:password@tcp(host:3306)/database")
+	}
 	driver := cmp.Or(opts.driver, driverFor(dsn))
 	if driver == "" {
-		return errors.New("cannot tell the driver from the connection string; pass --driver pgx or --driver sqlite")
+		return errors.New("cannot tell the driver from the connection string; pass --driver pgx, mysql or sqlite")
 	}
 	db, err := sql.Open(ctx, sql.Options{Driver: driver, DSN: dsn})
 	if err != nil {
@@ -159,6 +163,8 @@ func driverFor(dsn string) string {
 	switch {
 	case strings.HasPrefix(dsn, "postgres://"), strings.HasPrefix(dsn, "postgresql://"), strings.Contains(dsn, "host="):
 		return "pgx"
+	case strings.Contains(dsn, "@tcp("), strings.Contains(dsn, "@unix("):
+		return "mysql"
 	case strings.HasPrefix(dsn, "file:"), strings.HasPrefix(dsn, "sqlite:"), strings.HasSuffix(dsn, ".db"), strings.Contains(dsn, ".db?"):
 		return "sqlite"
 	default:

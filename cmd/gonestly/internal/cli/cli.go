@@ -82,7 +82,7 @@ func newCommand(printer *term.Printer) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&opts.Module, "module", "", "the Go module path (default: the directory name)")
-	cmd.Flags().StringVar(&opts.Database, "database", "", "add a database: postgres or sqlite")
+	cmd.Flags().StringVar(&opts.Database, "database", "", "add a database: postgres, mysql or sqlite")
 	cmd.Flags().StringVar(&opts.Replace, "replace", "", "use a local checkout of Gonestly instead of the published modules")
 	_ = cmd.Flags().MarkHidden("replace")
 	return cmd

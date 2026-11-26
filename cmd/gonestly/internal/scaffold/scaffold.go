@@ -30,7 +30,7 @@ var templates embed.FS
 var Kinds = []string{"resource", "module", "controller", "service", "guard", "interceptor"}
 
 // Databases are the databases a project can use.
-var Databases = map[string]string{"postgres": "pgx", "sqlite": "sqlite"}
+var Databases = map[string]string{"postgres": "pgx", "mysql": "mysql", "sqlite": "sqlite"}
 
 const gonestlyModule = "github.com/yaboylino/gonestly"
 
@@ -128,7 +128,7 @@ type ProjectOptions struct {
 	Dir string
 	// Module is the Go module path; it defaults to the project name.
 	Module string
-	// Database is "postgres", "sqlite" or empty for none.
+	// Database is "postgres", "mysql", "sqlite" or empty for none.
 	Database string
 	// Replace points at a local checkout of Gonestly, used instead of the published modules.
 	Replace string
@@ -145,7 +145,7 @@ func NewProject(ctx context.Context, opts ProjectOptions, printer *term.Printer)
 	}
 	driver, ok := Databases[opts.Database]
 	if opts.Database != "" && !ok {
-		return fmt.Errorf("unknown database %q; use postgres or sqlite", opts.Database)
+		return fmt.Errorf("unknown database %q; use postgres, mysql or sqlite", opts.Database)
 	}
 	if entries, err := os.ReadDir(opts.Dir); err == nil && len(entries) > 0 {
 		return fmt.Errorf("%s already exists and is not empty", opts.Dir)
@@ -395,10 +395,12 @@ func detectDatabase(p *project.Project) (string, error) {
 	switch {
 	case bytes.Contains(gomod, []byte("github.com/jackc/pgx")), bytes.Contains(gomod, []byte("github.com/lib/pq")):
 		return "postgres", nil
+	case bytes.Contains(gomod, []byte("github.com/go-sql-driver/mysql")):
+		return "mysql", nil
 	case bytes.Contains(gomod, []byte("modernc.org/sqlite")), bytes.Contains(gomod, []byte("github.com/mattn/go-sqlite3")):
 		return "sqlite", nil
 	default:
-		return "", errors.New("a resource needs a database, and go.mod has no PostgreSQL or SQLite driver; create the project with --database postgres or --database sqlite")
+		return "", errors.New("a resource needs a database, and go.mod has no PostgreSQL, MySQL or SQLite driver; create the project with --database postgres, mysql or sqlite")
 	}
 }
 

@@ -90,6 +90,9 @@ func TestProjectLifecycle(t *testing.T) {
 	if out, code := run(t, shop, "migrate", "create", "add_price"); code != 0 || !strings.Contains(out, "_add_price.up.sql") {
 		t.Errorf("create:\n%s", out)
 	}
+	if out, code := run(t, shop, "migrate", "status", "--dsn", "mysql://localhost/shop"); code == 0 || !strings.Contains(out, "write it as user:password@tcp(host:3306)/database") {
+		t.Errorf("status with a MySQL URL:\n%s", out)
+	}
 	if out, code := run(t, shop, "version"); code != 0 || !strings.HasPrefix(out, "gonestly ") {
 		t.Errorf("version: %s", out)
 	}
@@ -109,8 +112,8 @@ func TestErrors(t *testing.T) {
 			t.Errorf("gonestly %s: code %d, output %q, want %q", args, code, out, want)
 		}
 	}
-	if out, code := run(t, dir, "new", "app", "--database", "mysql"); code == 0 || !strings.Contains(out, `unknown database "mysql"`) {
-		t.Errorf("new with mysql: %s", out)
+	if out, code := run(t, dir, "new", "app", "--database", "oracle"); code == 0 || !strings.Contains(out, `unknown database "oracle"; use postgres, mysql or sqlite`) {
+		t.Errorf("new with oracle: %s", out)
 	}
 }
 
@@ -152,6 +155,8 @@ func TestDriverFor(t *testing.T) {
 		"host=localhost dbname=shop":           "pgx",
 		"file:shop.db?_pragma=foreign_keys(1)": "sqlite",
 		"shop.db":                              "sqlite",
+		"root:pw@tcp(localhost:3306)/shop":     "mysql",
+		"root@unix(/tmp/mysql.sock)/shop":      "mysql",
 		"mysql://localhost":                    "",
 	} {
 		if got := driverFor(dsn); got != want {

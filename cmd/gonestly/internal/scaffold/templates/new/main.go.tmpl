@@ -8,6 +8,8 @@ import (
 	"github.com/yaboylino/gonestly"
 {{- if eq .Database "postgres"}}
 	_ "github.com/jackc/pgx/v5/stdlib"
+{{- else if eq .Database "mysql"}}
+	_ "github.com/go-sql-driver/mysql"
 {{- else if eq .Database "sqlite"}}
 	_ "modernc.org/sqlite"
 {{- end}}

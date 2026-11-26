@@ -7,11 +7,12 @@ GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 # Every Go module in the repository; integrations have their own because of their dependencies.
 MODULES := . validator sql cmd/gonestly
 
-# The SQL tests also run against PostgreSQL when GONESTLY_TEST_POSTGRES is set; `make postgres`
-# starts a matching database in Docker.
+# The SQL tests also run against PostgreSQL and MySQL when GONESTLY_TEST_POSTGRES and
+# GONESTLY_TEST_MYSQL are set; `make databases` starts matching databases in Docker.
 POSTGRES_DSN := postgres://postgres:gonestly@127.0.0.1:55432/gonestly?sslmode=disable
+MYSQL_DSN := root:gonestly@tcp(127.0.0.1:53306)/gonestly
 
-.PHONY: check test test-postgres postgres cover lint fmt vuln tidy
+.PHONY: check test test-databases databases cover lint fmt vuln tidy
 
 # check: run every check that CI runs
 check: tidy lint test vuln
@@ -20,13 +21,14 @@ check: tidy lint test vuln
 test:
 	@for m in $(MODULES); do (cd $$m && go test -race -shuffle=on ./...) || exit 1; done
 
-# test-postgres: run the tests, including the SQL tests against the database of `make postgres`
-test-postgres:
-	GONESTLY_TEST_POSTGRES="$(POSTGRES_DSN)" $(MAKE) test
+# test-databases: run the tests, including the SQL tests against the databases of `make databases`
+test-databases:
+	GONESTLY_TEST_POSTGRES="$(POSTGRES_DSN)" GONESTLY_TEST_MYSQL="$(MYSQL_DSN)" $(MAKE) test
 
-# postgres: start a PostgreSQL container for the SQL tests
-postgres:
+# databases: start PostgreSQL and MySQL containers for the SQL tests
+databases:
 	docker run -d --rm --name gonestly-test-pg -e POSTGRES_PASSWORD=gonestly -e POSTGRES_DB=gonestly -p 55432:5432 postgres:17-alpine
+	docker run -d --rm --name gonestly-test-mysql -e MYSQL_ROOT_PASSWORD=gonestly -e MYSQL_DATABASE=gonestly -p 53306:3306 mysql:8.4
 
 # cover: run the tests and open the coverage report
 cover:
