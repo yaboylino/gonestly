@@ -34,6 +34,10 @@ type Dialect interface {
 	emptyInsert() string
 	// noLimit is the LIMIT that an OFFSET without a limit needs, if any.
 	noLimit() string
+	// upsert ends an INSERT so that a row with the same key is updated instead: conflict are
+	// the columns of that key, update the columns to overwrite and autoKey the primary key
+	// when the database generates it as a number.
+	upsert(b *sqlBuilder, conflict, update []string, autoKey string)
 	// timestamp is the column type for a moment in time with sub-second precision.
 	timestamp() string
 }
@@ -235,6 +239,67 @@ func mysqlDSN(dsn string) string {
 		return dsn
 	default:
 		return dsn + "&parseTime=true"
+	}
+}
+
+// conflictUpdate is the ON CONFLICT clause of PostgreSQL and SQLite.
+func conflictUpdate(b *sqlBuilder, conflict, update []string) {
+	b.write(" ON CONFLICT (")
+	for i, column := range conflict {
+		if i > 0 {
+			b.write(", ")
+		}
+		b.ident(column)
+	}
+	b.write(") DO UPDATE SET ")
+	if len(update) == 0 {
+		// Nothing to overwrite; an assignment to itself still returns the existing row.
+		update = conflict[:1]
+	}
+	for i, column := range update {
+		if i > 0 {
+			b.write(", ")
+		}
+		b.ident(column)
+		b.write(" = EXCLUDED.")
+		b.ident(column)
+	}
+}
+
+func (postgresDialect) upsert(b *sqlBuilder, conflict, update []string, _ string) {
+	conflictUpdate(b, conflict, update)
+}
+
+func (sqliteDialect) upsert(b *sqlBuilder, conflict, update []string, _ string) {
+	conflictUpdate(b, conflict, update)
+}
+
+// MySQL updates on a clash with any unique key; VALUES() also works in MariaDB. An auto
+// increment key is passed through LAST_INSERT_ID, so that an update reports the key too.
+func (mysqlDialect) upsert(b *sqlBuilder, conflict, update []string, autoKey string) {
+	b.write(" ON DUPLICATE KEY UPDATE ")
+	for i, column := range update {
+		if i > 0 {
+			b.write(", ")
+		}
+		b.ident(column)
+		b.write(" = VALUES(")
+		b.ident(column)
+		b.write(")")
+	}
+	switch {
+	case autoKey != "":
+		if len(update) > 0 {
+			b.write(", ")
+		}
+		b.ident(autoKey)
+		b.write(" = LAST_INSERT_ID(")
+		b.ident(autoKey)
+		b.write(")")
+	case len(update) == 0:
+		b.ident(conflict[0])
+		b.write(" = ")
+		b.ident(conflict[0])
 	}
 }
 

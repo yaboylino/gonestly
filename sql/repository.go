@@ -60,35 +60,7 @@ func (r *Repository[T, ID]) Count(ctx context.Context, conditions ...Condition) 
 func (r *Repository[T, ID]) Create(ctx context.Context, v *T) error {
 	rv := reflect.ValueOf(v).Elem()
 	b := &sqlBuilder{dialect: r.db.dialect}
-	b.write("INSERT INTO ")
-	b.ident(r.model.table)
-
-	var columns []*field
-	for _, f := range r.model.fields {
-		if (f.pk || f.dbValue) && rv.FieldByIndex(f.index).IsZero() {
-			continue
-		}
-		columns = append(columns, f)
-	}
-	if len(columns) == 0 {
-		b.write(r.db.dialect.emptyInsert())
-	} else {
-		b.write(" (")
-		for i, f := range columns {
-			if i > 0 {
-				b.write(", ")
-			}
-			b.ident(f.column)
-		}
-		b.write(") VALUES (")
-		for i, f := range columns {
-			if i > 0 {
-				b.write(", ")
-			}
-			b.arg(rv.FieldByIndex(f.index).Interface())
-		}
-		b.write(")")
-	}
+	r.writeInsert(b, r.insertFields(rv), []reflect.Value{rv})
 	if r.db.dialect.returning() {
 		b.write(" RETURNING ")
 		r.columns(b)
@@ -185,16 +157,7 @@ func (r *Repository[T, ID]) columns(b *sqlBuilder) {
 
 // reload fills v with the stored row that has its primary key.
 func (r *Repository[T, ID]) reload(ctx context.Context, v reflect.Value) (bool, error) {
-	b := &sqlBuilder{dialect: r.db.dialect}
-	b.write("SELECT ")
-	r.columns(b)
-	b.write(" FROM ")
-	b.ident(r.model.table)
-	b.write(" WHERE ")
-	b.ident(r.model.pk.column)
-	b.write(" = ")
-	b.arg(v.FieldByIndex(r.model.pk.index).Interface())
-	return r.queryInto(ctx, b, v)
+	return r.reloadBy(ctx, v, []string{r.model.pk.column})
 }
 
 // setGeneratedKey stores the auto increment value of an insert in the primary key field.

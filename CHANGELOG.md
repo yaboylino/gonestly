@@ -20,6 +20,8 @@ All notable changes to this project are documented in this file. The format is b
 - The `jwt` module: `Tokens` signs and verifies JSON Web Tokens with a secret, a key pair or
   the keys of an identity provider, and its guard puts the claims in the context and can
   require a role.
+- `Repository.CreateAll`, `Upsert` and `UpsertAll`: many rows in few statements, and rows that
+  are inserted or updated by their primary key or by unique columns.
 - `examples/tasks`, a complete application with two feature modules, a guard, transactions
   across modules and tests.
 
