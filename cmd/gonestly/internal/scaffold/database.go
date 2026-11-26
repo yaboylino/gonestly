@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/astedit"
@@ -41,8 +43,9 @@ var driverImports = map[string]string{
 // AddDatabase creates the database on its server, and wires it into a project that has none:
 // the connection string in .env, the sql module in the root module, the driver, and a
 // migrations directory.
-func AddDatabase(ctx context.Context, opts AddDatabaseOptions, printer *term.Printer) error {
+func AddDatabase(ctx context.Context, opts AddDatabaseOptions, printer *term.Printer) (err error) {
 	p, cfg := opts.Project, opts.Config
+	cfg.Dir = p.Root
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
@@ -55,20 +58,14 @@ func AddDatabase(ctx context.Context, opts AddDatabaseOptions, printer *term.Pri
 		return err
 	}
 
-	if !opts.SkipCreate {
-		result, err := dbsetup.Create(ctx, cfg)
-		if err != nil {
-			return err
+	// Every file is restored when a step fails, so the project is never left half converted.
+	undo := newUndo(append(slices.Collect(maps.Values(files)), filepath.Join(p.Root, ".env"), filepath.Join(p.Root, ".env.example"), filepath.Join(p.Root, "migrations", "migrations.go")), filepath.Join(p.Root, "migrations"))
+	committed := false
+	defer func() {
+		if err != nil && !committed {
+			undo.restore()
 		}
-		switch {
-		case cfg.Kind == "sqlite":
-			printer.Info("the SQLite file %s is created by the first migration", cfg.Name)
-		case result.Existed:
-			printer.Info("the database %s already exists on %s:%d", cfg.Name, cfg.Host, cfg.Port)
-		default:
-			printer.Success("created the database %s on %s:%d", cfg.Name, cfg.Host, cfg.Port)
-		}
-	}
+	}()
 
 	if err := writeMigrationsPackage(p, printer); err != nil {
 		return err
@@ -98,6 +95,22 @@ func AddDatabase(ctx context.Context, opts AddDatabaseOptions, printer *term.Pri
 	}
 	printer.Updated(p.Rel(files["main"]))
 
+	if !opts.SkipCreate {
+		result, err := dbsetup.Create(ctx, cfg)
+		if err != nil {
+			return err
+		}
+		switch {
+		case cfg.Kind == "sqlite":
+			printer.Info("the SQLite file %s is created by the first migration", cfg.Name)
+		case result.Existed:
+			printer.Info("the database %s already exists on %s:%d", cfg.Name, cfg.Host, cfg.Port)
+		default:
+			printer.Success("created the database %s on %s:%d", cfg.Name, cfg.Host, cfg.Port)
+		}
+	}
+
+	committed = true
 	if opts.SkipInstall {
 		return nil
 	}
@@ -201,7 +214,7 @@ func installDatabase(ctx context.Context, p *project.Project, kind string) error
 		if err := run(ctx, p.Root, "go", "mod", "edit", "-require="+gonestlyModule+"/sql@v0.0.0", "-replace="+gonestlyModule+"/sql="+filepath.Join(local, "sql")); err != nil {
 			return err
 		}
-	} else if err := run(ctx, p.Root, "go", "get", gonestlyModule+"/sql@latest"); err != nil {
+	} else if err := run(ctx, p.Root, "go", "get", gonestlyModule+"/sql@"+frameworkVersion(string(gomod))); err != nil {
 		return err
 	}
 	if err := run(ctx, p.Root, "go", "get", driverModules[kind]+"@latest"); err != nil {
@@ -218,4 +231,56 @@ func localFramework(gomod string) string {
 		return m[1]
 	}
 	return ""
+}
+
+var requireFramework = regexp.MustCompile(`(?m)^\s*(?:require\s+)?` + regexp.QuoteMeta(gonestlyModule) + `\s+(v\S+)`)
+
+// frameworkVersion is the version of the framework that the project requires, so that the sql
+// module that goes with it is added and the framework is not upgraded on the way.
+func frameworkVersion(gomod string) string {
+	if m := requireFramework.FindStringSubmatch(gomod); m != nil {
+		return m[1]
+	}
+	return "latest"
+}
+
+// undo restores files to what they were, and removes what did not exist.
+type undo struct {
+	files map[string][]byte
+	gone  []string
+	dirs  []string
+}
+
+func newUndo(paths []string, newDirs ...string) *undo {
+	u := &undo{files: map[string][]byte{}}
+	for _, path := range paths {
+		if content, err := os.ReadFile(path); err == nil {
+			u.files[path] = content
+		} else {
+			u.gone = append(u.gone, path)
+		}
+	}
+	for _, dir := range newDirs {
+		if _, err := os.Stat(dir); err != nil {
+			u.dirs = append(u.dirs, dir)
+		}
+	}
+	return u
+}
+
+func (u *undo) restore() {
+	for path, content := range u.files {
+		info, err := os.Stat(path)
+		mode := os.FileMode(0o644)
+		if err == nil {
+			mode = info.Mode().Perm()
+		}
+		_ = os.WriteFile(path, content, mode)
+	}
+	for _, path := range u.gone {
+		_ = os.Remove(path)
+	}
+	for _, dir := range u.dirs {
+		_ = os.Remove(dir)
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -87,6 +88,7 @@ terminal every detail comes from a flag, and the password from ` + passwordEnv +
 	cmd.Flags().IntVar(&cfg.Port, "port", 0, "the port of the database server (default: the port of the database)")
 	cmd.Flags().StringVar(&cfg.User, "user", "", "the user to connect as")
 	cmd.Flags().StringVar(&cfg.Password, "password", "", "the password; prefer "+passwordEnv+" or the prompt")
+	cmd.Flags().StringVar(&cfg.SSL, "ssl", "", "PostgreSQL sslmode or MySQL tls (default: off for this machine, on for other hosts)")
 	cmd.Flags().StringVar(&cfg.Name, "name", "", "the name of the database, or the file of a SQLite database")
 	cmd.Flags().BoolVar(&skipCreate, "skip-create", false, "only connect the project; the database exists already or is made another way")
 	return cmd
@@ -94,12 +96,23 @@ terminal every detail comes from a flag, and the password from ` + passwordEnv +
 
 // defaultName is the name of the database that fits the project.
 func defaultName(p *project.Project) string {
-	name := strings.NewReplacer("-", "_", ".", "_").Replace(p.Module[strings.LastIndexByte(p.Module, '/')+1:])
+	parts := strings.Split(p.Module, "/")
+	last := parts[len(parts)-1]
+	// A major version suffix is not the name of the project.
+	if len(parts) > 1 && majorVersion.MatchString(last) {
+		last = parts[len(parts)-2]
+	}
+	name := strings.ToLower(invalidNameChars.ReplaceAllString(last, "_"))
 	if name == "" || (name[0] >= '0' && name[0] <= '9') {
 		name = "app_" + name
 	}
-	return strings.ToLower(name)
+	return name
 }
+
+var (
+	majorVersion     = regexp.MustCompile(`^v[0-9]+$`)
+	invalidNameChars = regexp.MustCompile(`[^A-Za-z0-9_]`)
+)
 
 var defaultUsers = map[string]string{"mysql": "root", "postgres": "postgres"}
 
@@ -124,8 +137,8 @@ func completeConfig(cfg *dbsetup.Config, given map[string]bool, ask *prompt.Prom
 			cfg.Password = ""
 			given["password"] = false
 		}
-		if given["host"] || given["port"] || given["user"] || given["password"] {
-			return errors.New("a SQLite database is a file; it has no host, port, user or password")
+		if given["host"] || given["port"] || given["user"] || given["password"] || given["ssl"] {
+			return errors.New("a SQLite database is a file; it has no host, port, user, password or TLS setting")
 		}
 		if !given["name"] {
 			cfg.Name = project + ".db"

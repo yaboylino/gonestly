@@ -19,6 +19,24 @@ All notable changes to this project are documented in this file. The format is b
   module, the driver and a migrations directory. Without a terminal every detail comes from
   a flag and the password from `GONESTLY_DB_PASSWORD`.
 
+### Changed
+
+- A relation pointer whose key column exists in both models, such as a parent in the same
+  table, is ambiguous: add `,belongs` or `,has` to the `rel` tag. The application reports it
+  when it starts instead of guessing a direction.
+- `gonestly add database` connects to a PostgreSQL or MySQL server on another host with TLS
+  by default (`--ssl` changes it), restores every file it changed when a step fails, creates a
+  relative SQLite path in the project, and adds the sql module at the version of the framework
+  that the project requires.
+
+### Fixed
+
+- `CreateNested` returns an error for a model without a primary key instead of panicking, and
+  puts back the keys it had set when the insert is rolled back.
+- `Include` reports a relation declared for the wrong type instead of panicking.
+- `gonestly generate columns` refuses relation fields that are arrays or hold pointers.
+- The default database name skips a major version suffix such as `/v2`.
+
 ## [0.2.0] - 2026-11-26
 
 ### Added

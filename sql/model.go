@@ -141,13 +141,6 @@ func buildModel(t reflect.Type) (*model, error) {
 	if len(m.fields) == 0 {
 		problems = append(problems, t.Name()+" has no exported fields to map to columns")
 	}
-	for _, rel := range m.relations {
-		// A pointer is the owner of the key when this model has the column, and otherwise
-		// the other model has it.
-		if rel.kind == hasOne && m.byColumn[rel.key] != nil {
-			rel.kind = belongsTo
-		}
-	}
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidModel, strings.Join(problems, "; "))
 	}

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +37,37 @@ type Config struct {
 	Password string
 	// Name is the name of the database, or for SQLite the path of its file.
 	Name string
+	// SSL is the sslmode of PostgreSQL or the tls setting of MySQL. When empty, a server on this
+	// machine is reached without TLS and any other server with TLS.
+	SSL string
+	// Dir is what a relative SQLite name is relative to; the working directory when empty.
+	Dir string
+}
+
+var sslModes = map[string][]string{
+	"postgres": {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"},
+	"mysql":    {"false", "preferred", "true", "skip-verify"},
+}
+
+func isLocal(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// ssl returns the TLS setting to use.
+func (c Config) ssl() string {
+	if c.SSL != "" {
+		return c.SSL
+	}
+	switch {
+	case isLocal(c.Host):
+		return map[string]string{"postgres": "disable", "mysql": "false"}[c.Kind]
+	default:
+		return map[string]string{"postgres": "require", "mysql": "preferred"}[c.Kind]
+	}
 }
 
 // DefaultPort returns the port a server of this kind listens on, or 0 for SQLite.
@@ -69,6 +101,8 @@ func (c Config) Validate() error {
 		return fmt.Errorf("the port %d is not between 1 and 65535", c.Port)
 	case c.User == "":
 		return errors.New("the user is empty")
+	case c.SSL != "" && !slices.Contains(sslModes[c.Kind], c.SSL):
+		return fmt.Errorf("the TLS setting %q is not one of %s", c.SSL, strings.Join(sslModes[c.Kind], ", "))
 	case !name.MatchString(c.Name):
 		return fmt.Errorf("the database name %q must start with a letter or underscore and have only letters, digits and underscores", c.Name)
 	}
@@ -96,12 +130,15 @@ func (c Config) dsn(database, password string) string {
 	switch c.Kind {
 	case "postgres":
 		u := url.URL{Scheme: "postgres", User: url.UserPassword(c.User, password), Host: address, Path: "/" + database}
-		u.RawQuery = "sslmode=disable"
+		u.RawQuery = "sslmode=" + c.ssl()
 		return u.String()
 	case "mysql":
 		cfg := mysql.NewConfig()
 		cfg.User, cfg.Passwd, cfg.Net, cfg.Addr, cfg.DBName = c.User, password, "tcp", address, database
 		cfg.ParseTime = true
+		if tls := c.ssl(); tls != "false" {
+			cfg.TLSConfig = tls
+		}
 		return cfg.FormatDSN()
 	default:
 		return "file:" + filepath.ToSlash(database) + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
@@ -121,12 +158,16 @@ func Create(ctx context.Context, c Config) (Result, error) {
 		return Result{}, err
 	}
 	if c.Kind == "sqlite" {
-		if dir := filepath.Dir(c.Name); dir != "." {
+		file := c.Name
+		if c.Dir != "" && !filepath.IsAbs(file) {
+			file = filepath.Join(c.Dir, file)
+		}
+		if dir := filepath.Dir(file); dir != "." {
 			if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // the directory is meant to be shared
 				return Result{}, err
 			}
 		}
-		_, err := os.Stat(c.Name)
+		_, err := os.Stat(file)
 		return Result{Existed: err == nil}, nil
 	}
 
