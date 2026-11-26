@@ -7,7 +7,7 @@ toolchain go1.26.11
 require (
 	github.com/MicahParks/keyfunc/v3 v3.9.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/yaboylino/gonestly v0.1.0
+	github.com/yaboylino/gonestly v0.2.0
 )
 
 require (
