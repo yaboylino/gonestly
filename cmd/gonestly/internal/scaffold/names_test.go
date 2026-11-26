@@ -1,11 +1,6 @@
 package scaffold
 
-import (
-	"os"
-	"path/filepath"
-	"testing"
-	"time"
-)
+import "testing"
 
 func TestNames(t *testing.T) {
 	tests := map[string]Names{
@@ -58,37 +53,5 @@ func TestFrameworkVersion(t *testing.T) {
 		if got := frameworkVersion(gomod); got != want {
 			t.Errorf("frameworkVersion(%q) = %s, want %s", gomod, got, want)
 		}
-	}
-}
-
-func TestNextMigrationVersion(t *testing.T) {
-	now := time.Date(2026, 3, 1, 10, 0, 5, 0, time.UTC)
-	write := func(dir string, names ...string) {
-		for _, name := range names {
-			if err := os.WriteFile(filepath.Join(dir, name), nil, 0o600); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	for name, tt := range map[string]struct {
-		files []string
-		want  string
-	}{
-		"an empty directory":      {nil, "20260301100005"},
-		"older timestamps":        {[]string{"20250101000000_a.up.sql"}, "20260301100005"},
-		"the same second":         {[]string{"20260301100005_a.up.sql", "20260301100005_a.down.sql"}, "20260301100006"},
-		"a later second":          {[]string{"20260301100009_a.up.sql"}, "20260301100010"},
-		"counters":                {[]string{"0001_a.up.sql", "0002_b.up.sql"}, "0003"},
-		"other files are ignored": {[]string{"README.md", "migrations.go", "x_y.sql"}, "20260301100005"},
-	} {
-		dir := t.TempDir()
-		write(dir, tt.files...)
-		got, err := NextMigrationVersion(dir, now)
-		if err != nil || got != tt.want {
-			t.Errorf("%s: %q, %v, want %q", name, got, err, tt.want)
-		}
-	}
-	if _, err := NextMigrationVersion(filepath.Join(t.TempDir(), "missing"), now); err == nil {
-		t.Error("a missing directory")
 	}
 }

@@ -7,12 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/astedit"
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/project"
+	"github.com/yaboylino/gonestly/cmd/gonestly/internal/schema"
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/term"
 	"github.com/yaboylino/gonestly/jobs"
 )
@@ -30,7 +29,7 @@ type AddJobsOptions struct {
 // project that has a database.
 func AddJobs(ctx context.Context, opts AddJobsOptions, printer *term.Printer) (err error) {
 	p := opts.Project
-	database, err := detectDatabase(p)
+	database, err := DetectDatabase(p)
 	if err != nil {
 		return errors.New("jobs are stored in the database, and go.mod has no PostgreSQL, MySQL or SQLite driver; add one with gonestly add database")
 	}
@@ -63,7 +62,7 @@ func AddJobs(ctx context.Context, opts AddJobsOptions, printer *term.Printer) (e
 	if now.IsZero() {
 		now = time.Now()
 	}
-	version, err := NextMigrationVersion(migrations, now)
+	version, err := schema.NextVersion(migrations, now)
 	if err != nil {
 		return err
 	}
@@ -105,44 +104,4 @@ func AddJobs(ctx context.Context, opts AddJobsOptions, printer *term.Printer) (e
 		return fmt.Errorf("jobs were added, but go mod tidy failed; run it to try again: %w", err)
 	}
 	return nil
-}
-
-// NextMigrationVersion returns the version for a new migration in dir: the next counter for
-// 0001 style versions, or a timestamp that is later than every version that exists, so that two
-// migrations made within a second do not clash.
-func NextMigrationVersion(dir string, now time.Time) (string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return "", fmt.Errorf("reading %s: %w", dir, err)
-	}
-	var highest, latestStamp int64
-	counter := false
-	for _, e := range entries {
-		prefix, _, ok := strings.Cut(e.Name(), "_")
-		if !ok || !strings.HasSuffix(e.Name(), ".sql") {
-			continue
-		}
-		n, err := strconv.ParseInt(prefix, 10, 64)
-		if err != nil {
-			continue
-		}
-		counter = len(prefix) < 14
-		highest = max(highest, n)
-		if len(prefix) == 14 {
-			latestStamp = max(latestStamp, n)
-		}
-	}
-	if counter {
-		return fmt.Sprintf("%04d", highest+1), nil
-	}
-	const layout = "20060102150405"
-	version := now.UTC().Format(layout)
-	if taken, err := strconv.ParseInt(version, 10, 64); err == nil && latestStamp >= taken {
-		latest, err := time.Parse(layout, strconv.FormatInt(latestStamp, 10))
-		if err != nil {
-			return "", fmt.Errorf("the migration version %d is not a timestamp", latestStamp)
-		}
-		version = latest.Add(time.Second).Format(layout)
-	}
-	return version, nil
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/astedit"
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/columns"
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/project"
+	"github.com/yaboylino/gonestly/cmd/gonestly/internal/schema"
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/term"
 )
 
@@ -330,7 +331,7 @@ func generateResource(w *writer, d data, p *project.Project, dir, rel string, mo
 	if moduleExists {
 		return fmt.Errorf("%s already exists; a resource creates its own module", p.Rel(filepath.Join(dir, "module.go")))
 	}
-	database, err := detectDatabase(p)
+	database, err := DetectDatabase(p)
 	if err != nil {
 		return err
 	}
@@ -341,8 +342,14 @@ func generateResource(w *writer, d data, p *project.Project, dir, rel string, mo
 	if now.IsZero() {
 		now = time.Now()
 	}
-	version, err := NextMigrationVersion(filepath.Join(p.Root, "migrations"), now)
-	if err != nil {
+	env := schema.Env{Root: p.Root, Module: p.Module, Dialect: schema.Dialect(database)}
+	snapshot, err := env.Snapshot()
+	if errors.Is(err, schema.ErrNoSnapshot) {
+		if snapshot, err = env.Baseline(); err != nil {
+			return fmt.Errorf("recording the schema of the existing migrations: %w", err)
+		}
+		printer.Info("recorded the models of the project as the schema of its migrations")
+	} else if err != nil {
 		return err
 	}
 	in := func(file string) string { return filepath.Join(rel, file) }
@@ -352,8 +359,6 @@ func generateResource(w *writer, d data, p *project.Project, dir, rel string, mo
 		{"resource/requests.go.tmpl", in("requests.go")},
 		{"resource/service.go.tmpl", in("service.go")},
 		{"resource/controller.go.tmpl", in("controller.go")},
-		{"resource/up.sql.tmpl", filepath.Join("migrations", version+"_create_"+d.Names.Snake+".up.sql")},
-		{"resource/down.sql.tmpl", filepath.Join("migrations", version+"_create_"+d.Names.Snake+".down.sql")},
 	}
 	if database == "sqlite" {
 		outputs = append(outputs, output{"resource/controller_test.go.tmpl", in("controller_test.go")})
@@ -367,12 +372,42 @@ func generateResource(w *writer, d data, p *project.Project, dir, rel string, mo
 		return fmt.Errorf("generating the columns: %w", err)
 	}
 	printer.Created(filepath.ToSlash(in(columns.FileName)))
+	undoColumns := func() { _ = os.Remove(filepath.Join(dir, columns.FileName)) }
+	written, err := writeResourceMigration(env, snapshot, d.Names.Snake, now)
+	if err != nil {
+		w.undo()
+		undoColumns()
+		return fmt.Errorf("making the migration: %w", err)
+	}
+	printer.Created(p.Rel(written.Up))
+	printer.Created(p.Rel(written.Down))
 	if err := registerInRoot(p, d.Import, printer); err != nil {
 		w.undo()
-		_ = os.Remove(filepath.Join(dir, columns.FileName))
+		undoColumns()
+		_ = os.Remove(written.Up)
+		_ = os.Remove(written.Down)
+		_ = schema.SaveSnapshot(env.Dir(), snapshot)
 		return err
 	}
 	return nil
+}
+
+// writeResourceMigration writes the migration that creates the table of the model that was just
+// made. Other differences between the models and the migrations stay for gonestly migrate dev.
+func writeResourceMigration(env schema.Env, snapshot schema.Schema, table string, now time.Time) (schema.Written, error) {
+	models, err := env.Models()
+	if err != nil {
+		return schema.Written{}, err
+	}
+	next, err := schema.WithTable(snapshot, models, table)
+	if err != nil {
+		return schema.Written{}, err
+	}
+	change, err := env.Plan(snapshot, next, nil)
+	if err != nil {
+		return schema.Written{}, err
+	}
+	return env.Write(change, "create_"+table, now)
 }
 
 // registerInRoot imports a new module in the root module, internal/app/module.go.
@@ -393,8 +428,8 @@ func registerInRoot(p *project.Project, importPath string, printer *term.Printer
 	return nil
 }
 
-// detectDatabase reads the driver from go.mod.
-func detectDatabase(p *project.Project) (string, error) {
+// DetectDatabase reads the driver from go.mod.
+func DetectDatabase(p *project.Project) (string, error) {
 	gomod, err := os.ReadFile(filepath.Join(p.Root, "go.mod"))
 	if err != nil {
 		return "", err

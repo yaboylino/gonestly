@@ -19,7 +19,8 @@ documentation is served at http://localhost:3000/docs.
 | `go test ./...` | Runs the tests |
 | `make fmt` | Formats the code with gofmt |
 {{- if .Database}}
-| `gonestly migrate create <name>` | Adds a migration |
+| `gonestly migrate dev` | Writes and applies a migration for the changes in your models |
+| `gonestly migrate create <name>` | Adds an empty migration to write by hand |
 | `gonestly migrate status` | Shows which migrations are applied |
 {{- end}}
 

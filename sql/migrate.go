@@ -22,6 +22,8 @@ var (
 	migrationFile = regexp.MustCompile(`^(\d+)_([a-z0-9_]+)\.(up|down)\.sql$`)
 	// noTransaction is the comment that runs a migration file outside a transaction.
 	noTransaction = regexp.MustCompile(`(?m)^--\s*gonestly:no-transaction\s*$`)
+	// foreignKeysOff is the comment line that makes a SQLite migration run with foreign keys off.
+	foreignKeysOff = regexp.MustCompile(`(?m)^--\s*gonestly:foreign-keys-off\s*$`)
 )
 
 // Migration is one versioned change to the schema, read from a pair of files such as
@@ -42,6 +44,11 @@ type MigrationStatus struct {
 
 // Migrator applies migrations from a file system, usually one embedded with go:embed. Each
 // migration runs in its own transaction and is recorded in the gonestly_migrations table.
+//
+// A file with the comment line "-- gonestly:foreign-keys-off" runs in a transaction with the
+// foreign keys of SQLite switched off, and fails when keys are violated at the end; SQLite needs
+// that to make a table again without the foreign keys that point at it deleting rows. Other
+// databases ignore the line.
 //
 // A file with the comment line "-- gonestly:no-transaction" runs outside a transaction, one
 // statement at a time, for statements such as CREATE INDEX CONCURRENTLY in PostgreSQL. When
@@ -186,6 +193,14 @@ func (m *Migrator) Down(ctx context.Context) (*Migration, error) {
 // does not when another process applied or reverted the migration in the meantime.
 func (m *Migrator) run(ctx context.Context, migration Migration, script string, applied bool, record func(ctx context.Context) error) (ran bool, err error) {
 	transaction := !noTransaction.MatchString(script)
+	keysOff := foreignKeysOff.MatchString(script) && m.db.dialect.Name() == SQLite.Name()
+	if keysOff {
+		restore, err := m.switchOffForeignKeys(ctx)
+		if err != nil {
+			return false, err
+		}
+		defer restore()
+	}
 	apply := func(ctx context.Context) error {
 		if guard := m.db.dialect.migrationGuard(); guard != "" {
 			if _, err := m.db.Exec(ctx, guard); err != nil {
@@ -200,6 +215,20 @@ func (m *Migrator) run(ctx context.Context, migration Migration, script string, 
 		for _, statement := range m.db.dialect.statements(script, transaction) {
 			if _, err := m.db.conn(ctx).ExecContext(ctx, statement); err != nil {
 				return err
+			}
+		}
+		if keysOff {
+			violations, err := Query[struct {
+				Table  string `db:"table"`
+				RowID  *int64 `db:"rowid"`
+				Parent string `db:"parent"`
+				FKID   int64  `db:"fkid"`
+			}](ctx, m.db, "PRAGMA foreign_key_check")
+			if err != nil {
+				return err
+			}
+			if len(violations) > 0 {
+				return fmt.Errorf("sql: the migration leaves rows in %s that violate a foreign key", violations[0].Table)
 			}
 		}
 		return record(ctx)
@@ -318,4 +347,19 @@ func (m *Migrator) pending(done map[int64]appliedMigration) ([]Migration, error)
 func checksum(content string) string {
 	sum := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(sum[:])
+}
+
+// switchOffForeignKeys turns foreign keys off on the connection of the migration, which SQLite
+// only allows outside a transaction, and returns the function that puts the setting back.
+func (m *Migrator) switchOffForeignKeys(ctx context.Context) (restore func(), err error) {
+	was, err := QueryOne[int64](ctx, m.db, "PRAGMA foreign_keys")
+	if err != nil {
+		return nil, fmt.Errorf("sql: reading the foreign keys setting: %w", err)
+	}
+	if _, err := m.db.Exec(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return nil, fmt.Errorf("sql: switching off foreign keys: %w", err)
+	}
+	return func() {
+		_, _ = m.db.Exec(context.WithoutCancel(ctx), "PRAGMA foreign_keys = "+strconv.FormatInt(was, 10))
+	}, nil
 }
