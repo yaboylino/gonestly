@@ -144,7 +144,8 @@ your application.
 - [x] MySQL and MariaDB support
 - [x] First release: `v0.1.0`
 - [x] `v0.2.0`: forms and uploads, CORS, rate limiting, JWT authentication, upserts and health checks
-- [ ] Relations in the query layer: loading related rows and nested writes
+- [x] Relations in the query layer: loading related rows and nested writes (`v0.3.0`)
+- [x] `gonestly add database`: create a database and connect the project to it (`v0.3.0`)
 
 ## Contributing
 
