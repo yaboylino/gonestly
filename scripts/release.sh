@@ -4,7 +4,7 @@ set -euo pipefail
 
 version=${1:?usage: scripts/release.sh v0.1.0}
 module=github.com/yaboylino/gonestly
-libraries=(validator sql jwt jobs)
+libraries=(validator sql jwt jobs password)
 
 fail() { echo "release: $*" >&2; exit 1; }
 step() { printf '\n==> %s (%ss)\n' "$1" "$SECONDS"; }

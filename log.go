@@ -17,6 +17,7 @@ type logFields struct {
 	mu        sync.Mutex
 	requestID string
 	route     string
+	clientIP  string
 	attrs     []slog.Attr
 }
 

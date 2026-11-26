@@ -16,6 +16,17 @@ All notable changes to this project are documented in this file. The format is b
   without taking one twice, put back what a shutdown interrupted, take over from a process that
   died, and clean up finished jobs. `Stats`, `Failed`, `Retry` and `RunDue` help to operate
   and test.
+- `SecurityHeaders`, middleware for Strict-Transport-Security (on HTTPS), X-Content-Type-Options,
+  Content-Security-Policy, X-Frame-Options, Referrer-Policy, Permissions-Policy and the
+  Cross-Origin policies, with strict defaults for an API. The API documentation page sets a
+  policy of its own that allows only its script, by hash, and its CDN.
+- `CrossOriginProtection`, middleware that refuses requests that change something when the
+  browser says they come from another site, for APIs that accept cookies.
+- `TrustProxies` and `ClientIP`, which find the client behind reverse proxies; the access log
+  and `RateLimit` use it. `gonestly new` enables the headers and reads `TRUSTED_PROXIES`.
+- `password` module: Argon2id hashing in the PHC format with `Hash`, `Verify` (which also says
+  when a hash needs an upgrade) and `Dummy` for logins that do not reveal accounts, limits on
+  concurrent hashes and on the length of a password, and an optional pepper.
 - `EventBus`, an in-process event bus that every module can inject: `Subscribe` registers a
   handler for a type or an interface, `Publish` runs the handlers in order with the context of
   the publisher, so they take part in its transaction, and joins their errors. `Async` handlers run
