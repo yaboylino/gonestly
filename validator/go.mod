@@ -6,7 +6,7 @@ toolchain go1.26.11
 
 require (
 	github.com/go-playground/validator/v10 v10.30.6
-	github.com/yaboylino/gonestly v0.4.0
+	github.com/yaboylino/gonestly v0.4.1
 )
 
 require (

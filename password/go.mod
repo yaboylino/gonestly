@@ -4,7 +4,7 @@ go 1.26.0
 
 toolchain go1.26.11
 
-require github.com/yaboylino/gonestly v0.4.0
+require github.com/yaboylino/gonestly v0.4.1
 
 require (
 	golang.org/x/crypto v0.59.0

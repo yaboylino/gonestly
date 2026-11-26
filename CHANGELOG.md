@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-26
+
 ### Fixed
 
 - `gonestly generate resource` and `gonestly add jobs` give a migration a version later than every

@@ -8,8 +8,8 @@ require github.com/redis/go-redis/v9 v9.24.0
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/yaboylino/gonestly v0.4.0 // indirect
-	github.com/yaboylino/gonestly/cache v0.4.0
+	github.com/yaboylino/gonestly v0.4.1 // indirect
+	github.com/yaboylino/gonestly/cache v0.4.1
 	go.uber.org/atomic v1.12.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 )
