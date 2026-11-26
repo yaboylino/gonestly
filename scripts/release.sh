@@ -4,7 +4,7 @@ set -euo pipefail
 
 version=${1:?usage: scripts/release.sh v0.1.0}
 module=github.com/yaboylino/gonestly
-libraries=(validator sql jwt)
+libraries=(validator sql jwt jobs)
 
 fail() { echo "release: $*" >&2; exit 1; }
 step() { printf '\n==> %s (%ss)\n' "$1" "$SECONDS"; }
@@ -27,6 +27,7 @@ perl -0pi -e "s/^## \[Unreleased\]\$/## [Unreleased]\n\n## [${version#v}] - $dat
 for library in "${libraries[@]}"; do
 	(cd "$library" && go mod edit -require="$module@$version")
 done
+(cd jobs && go mod edit -require="$module/sql@$version")
 git commit --quiet --all --message "chore: release $version"
 tags=("$version")
 git tag --annotate "$version" --message "$version"
@@ -39,7 +40,7 @@ git push --quiet origin main "${tags[@]}"
 # The CLI is installed with go install, which refuses replace directives, so it requires the
 # versions that were just published.
 step "Waiting for the module proxy"
-for path in "$module" "$module/sql" "$module/validator"; do
+for path in "$module" "$module/sql" "$module/validator" "$module/jobs"; do
 	until GOWORK=off GOFLAGS=-mod=mod GOPROXY=https://proxy.golang.org go list -m "$path@$version" >/dev/null 2>&1; do
 		sleep 5
 	done
@@ -48,7 +49,7 @@ done
 step "Releasing the CLI and the example"
 (
 	cd cmd/gonestly
-	go mod edit -dropreplace="$module" -dropreplace="$module/sql" -require="$module@$version" -require="$module/sql@$version"
+	go mod edit -dropreplace="$module" -dropreplace="$module/sql" -dropreplace="$module/jobs" -require="$module@$version" -require="$module/sql@$version" -require="$module/jobs@$version"
 	GOWORK=off go mod tidy
 	GOWORK=off go build ./...
 )

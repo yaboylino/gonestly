@@ -179,3 +179,94 @@ func TestAddDatabaseLeavesProjectAloneOnFailure(t *testing.T) {
 		t.Errorf("adding again after the failure:\n%s", out)
 	}
 }
+
+func TestAddJobsToProject(t *testing.T) {
+	if testing.Short() {
+		t.Skip("creates and builds a project")
+	}
+	work := t.TempDir()
+	if out, code := run(t, work, "new", "shop", "--module", "example.com/shop", "--replace", repoRoot(t)); code != 0 {
+		t.Fatalf("new failed:\n%s", out)
+	}
+	shop := filepath.Join(work, "shop")
+	if out, code := run(t, shop, "add", "jobs"); code == 0 || !strings.Contains(out, "gonestly add database") {
+		t.Errorf("jobs without a database:\n%s", out)
+	}
+	t.Setenv(passwordEnv, "")
+	if out, code := run(t, shop, "add", "database", "sqlite", "--name", "data/shop.db"); code != 0 {
+		t.Fatalf("add database failed:\n%s", out)
+	}
+	if out, code := run(t, shop, "add", "jobs"); code != 0 {
+		t.Fatalf("add jobs failed:\n%s", out)
+	}
+	module, _ := os.ReadFile(filepath.Join(shop, "internal", "app", "module.go"))
+	for _, want := range []string{`"github.com/yaboylino/gonestly/jobs"`, "jobs.Module(jobs.Options{})"} {
+		if !bytes.Contains(module, []byte(want)) {
+			t.Errorf("module.go misses %s:\n%s", want, module)
+		}
+	}
+	up, _ := filepath.Glob(filepath.Join(shop, "migrations", "*_create_jobs.up.sql"))
+	if len(up) != 1 {
+		t.Fatalf("migrations: %v", up)
+	}
+	if content, _ := os.ReadFile(up[0]); !bytes.Contains(content, []byte("CREATE TABLE gonestly_jobs")) {
+		t.Errorf("migration:\n%s", content)
+	}
+	if out, code := run(t, shop, "add", "jobs"); code == 0 || !strings.Contains(out, "already has jobs") {
+		t.Errorf("adding twice:\n%s", out)
+	}
+
+	// The project builds, and its migrations create a table that the queue works with.
+	test := `package app_test
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+
+	"github.com/yaboylino/gonestly/jobs"
+	"github.com/yaboylino/gonestly/sql"
+	_ "modernc.org/sqlite"
+
+	"example.com/shop/migrations"
+)
+
+type note struct{ Text string }
+
+func TestJobsTable(t *testing.T) {
+	ctx := t.Context()
+	db, err := sql.Open(ctx, sql.Options{Driver: "sqlite", DSN: "file:" + filepath.Join(t.TempDir(), "jobs.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	migrator, err := sql.NewMigrator(db, migrations.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := migrator.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	q, err := jobs.New(db, jobs.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	job, err := jobs.Define(q, "note", func(_ context.Context, n note) error { got = n.Text; return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := job.Enqueue(ctx, note{"hello"}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := q.RunDue(ctx); err != nil || n != 1 || got != "hello" {
+		t.Fatalf("RunDue = %d, %v, %q", n, err, got)
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(shop, "internal", "app", "jobs_test.go"), []byte(test), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	goCmd(t, shop, "vet", "./...")
+	goCmd(t, shop, "test", "./...")
+}

@@ -203,24 +203,29 @@ func setEnv(p *project.Project, name, key, value string, printer *term.Printer) 
 	return nil
 }
 
-// installDatabase requires the sql module and the driver, following a replace of the framework
-// that a project uses against a local checkout.
+// installDatabase requires the sql module and the driver.
 func installDatabase(ctx context.Context, p *project.Project, kind string) error {
-	gomod, err := os.ReadFile(filepath.Join(p.Root, "go.mod"))
-	if err != nil {
-		return err
-	}
-	if local := localFramework(string(gomod)); local != "" {
-		if err := run(ctx, p.Root, "go", "mod", "edit", "-require="+gonestlyModule+"/sql@v0.0.0", "-replace="+gonestlyModule+"/sql="+filepath.Join(local, "sql")); err != nil {
-			return err
-		}
-	} else if err := run(ctx, p.Root, "go", "get", gonestlyModule+"/sql@"+frameworkVersion(string(gomod))); err != nil {
+	if err := requireModule(ctx, p, "sql"); err != nil {
 		return err
 	}
 	if err := run(ctx, p.Root, "go", "get", driverModules[kind]+"@latest"); err != nil {
 		return err
 	}
 	return run(ctx, p.Root, "go", "mod", "tidy")
+}
+
+// requireModule requires a module of the framework, such as sql, at the version of the framework
+// that the project uses, following a replace of the framework against a local checkout.
+func requireModule(ctx context.Context, p *project.Project, name string) error {
+	gomod, err := os.ReadFile(filepath.Join(p.Root, "go.mod"))
+	if err != nil {
+		return err
+	}
+	path := gonestlyModule + "/" + name
+	if local := localFramework(string(gomod)); local != "" {
+		return run(ctx, p.Root, "go", "mod", "edit", "-require="+path+"@v0.0.0", "-replace="+path+"="+filepath.Join(local, name))
+	}
+	return run(ctx, p.Root, "go", "get", path+"@"+frameworkVersion(string(gomod)))
 }
 
 var replaceFramework = regexp.MustCompile(`(?m)^\s*(?:replace\s+)?` + regexp.QuoteMeta(gonestlyModule) + `\s+=>\s+(\S+)\s*$`)

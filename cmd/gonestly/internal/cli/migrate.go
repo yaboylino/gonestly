@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -19,6 +18,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/project"
+	"github.com/yaboylino/gonestly/cmd/gonestly/internal/scaffold"
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/term"
 	"github.com/yaboylino/gonestly/config"
 	"github.com/yaboylino/gonestly/sql"
@@ -172,33 +172,14 @@ func driverFor(dsn string) string {
 	}
 }
 
-// createMigration writes an empty pair, numbered like the existing migrations: the next
-// counter for 0001 style versions, or a timestamp.
+// createMigration writes an empty pair, numbered like the existing migrations.
 func createMigration(dir, name string, now time.Time, printer *term.Printer, p *project.Project) error {
 	if !migrationName.MatchString(name) {
 		return fmt.Errorf("%q is not a valid migration name; use lower case letters, digits and underscores", name)
 	}
-	entries, err := os.ReadDir(dir)
+	version, err := scaffold.NextMigrationVersion(dir, now)
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", dir, err)
-	}
-	version := now.UTC().Format("20060102150405")
-	var highest int64
-	counter := false
-	for _, e := range entries {
-		prefix, _, ok := strings.Cut(e.Name(), "_")
-		if !ok || !strings.HasSuffix(e.Name(), ".sql") {
-			continue
-		}
-		n, err := strconv.ParseInt(prefix, 10, 64)
-		if err != nil {
-			continue
-		}
-		counter = len(prefix) < 14
-		highest = max(highest, n)
-	}
-	if counter {
-		version = fmt.Sprintf("%04d", highest+1)
+		return err
 	}
 	for _, direction := range []string{"up", "down"} {
 		path := filepath.Join(dir, fmt.Sprintf("%s_%s.%s.sql", version, name, direction))
