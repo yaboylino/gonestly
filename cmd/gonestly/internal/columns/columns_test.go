@@ -63,7 +63,6 @@ import (
 	gonestlysql "github.com/yaboylino/gonestly/sql"
 )
 
-// ProductColumns are the columns of Product, for typed queries.
 var ProductColumns = struct {
 	ID        gonestlysql.Column[int64]
 	CreatedAt gonestlysql.Column[time.Time]
@@ -149,8 +148,7 @@ type Remark struct {
 		t.Fatal(err)
 	}
 	got, _ := os.ReadFile(filepath.Join(dir, FileName))
-	want := `// PostRelations are the relations of Post, for Include and Load.
-var PostRelations = struct {
+	want := `var PostRelations = struct {
 	Author  sql.Rel[Post, people.Person]
 	Remarks sql.Rel[Post, Remark]
 	Editor  sql.Rel[Post, people.Person]

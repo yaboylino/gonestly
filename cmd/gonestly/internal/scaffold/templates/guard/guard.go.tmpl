@@ -8,25 +8,20 @@ import (
 	"github.com/yaboylino/gonestly"
 )
 
-// Guard lets requests through that carry a valid bearer token.
 type Guard struct{}
 
-// NewGuard returns the guard.
 func NewGuard() *Guard {
 	return &Guard{}
 }
 
-// Check rejects requests without a valid bearer token.
 func (g *Guard) Check(ctx context.Context, r *http.Request) (context.Context, error) {
 	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok || token == "" {
 		return nil, gonestly.Unauthorized("a bearer token is required")
 	}
-	// Verify the token here, and store what you learn in the context for the handlers.
 	return ctx, nil
 }
 
-// SecurityScheme describes the token in the OpenAPI document.
 func (g *Guard) SecurityScheme() (string, gonestly.SecurityScheme) {
 	return "bearer", gonestly.SecurityScheme{Type: "http", Scheme: "bearer"}
 }

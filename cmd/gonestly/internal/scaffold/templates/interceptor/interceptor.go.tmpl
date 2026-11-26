@@ -9,17 +9,14 @@ import (
 	"github.com/yaboylino/gonestly"
 )
 
-// Interceptor logs how long each request takes.
 type Interceptor struct {
 	logger *slog.Logger
 }
 
-// NewInterceptor returns the interceptor.
 func NewInterceptor(logger *slog.Logger) *Interceptor {
 	return &Interceptor{logger: logger}
 }
 
-// Intercept wraps the handler of a route.
 func (i *Interceptor) Intercept(ctx context.Context, r *http.Request, next gonestly.Next) (any, error) {
 	start := time.Now()
 	result, err := next(ctx)
