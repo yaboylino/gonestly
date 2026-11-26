@@ -341,7 +341,10 @@ func generateResource(w *writer, d data, p *project.Project, dir, rel string, mo
 	if now.IsZero() {
 		now = time.Now()
 	}
-	version := now.UTC().Format("20060102150405")
+	version, err := NextMigrationVersion(filepath.Join(p.Root, "migrations"), now)
+	if err != nil {
+		return err
+	}
 	in := func(file string) string { return filepath.Join(rel, file) }
 	outputs := []output{
 		{"resource/module.go.tmpl", in("module.go")},

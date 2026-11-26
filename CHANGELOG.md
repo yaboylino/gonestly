@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Fixed
+
+- `gonestly generate resource` and `gonestly add jobs` give a migration a version later than every
+  existing one, so two made within a second no longer share a version. A resource also follows
+  the numbering of the project, counters or timestamps.
+
 ## [0.4.0] - 2026-11-26
 
 ### Added
