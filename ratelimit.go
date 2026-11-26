@@ -131,6 +131,9 @@ func (l *rateLimiter) key(r *http.Request) string {
 	if l.config.Key != nil {
 		return l.config.Key(r)
 	}
+	if ip := ClientIP(r.Context()); ip != "" && l.config.TrustedProxies == 0 {
+		return clientNetwork(ip)
+	}
 	return clientNetwork(clientAddress(r, l.config.TrustedProxies))
 }
 

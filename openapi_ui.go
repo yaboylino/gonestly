@@ -2,6 +2,8 @@ package gonestly
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"html/template"
 )
 
@@ -31,7 +33,9 @@ SwaggerUIBundle({ url: {{.SpecURL}}, dom_id: "#docs", deepLinking: true, persist
 </html>
 `))
 
-func renderSwaggerUI(title, specURL string) []byte {
+// renderSwaggerUI returns the page and the Content-Security-Policy it needs: the CDN for the
+// bundle, the hash of the inline script that starts it, and inline styles, which Swagger UI sets.
+func renderSwaggerUI(title, specURL string) (page []byte, policy string) {
 	var buf bytes.Buffer
 	_ = swaggerUITemplate.Execute(&buf, map[string]string{
 		"Title":     title,
@@ -40,5 +44,15 @@ func renderSwaggerUI(title, specURL string) []byte {
 		"ScriptSRI": swaggerUIScriptSRI,
 		"SpecURL":   specURL,
 	})
-	return buf.Bytes()
+	page = buf.Bytes()
+	const open, closing = "<script>", "</script>"
+	start := bytes.LastIndex(page, []byte(open)) + len(open)
+	end := bytes.LastIndex(page, []byte(closing))
+	sum := sha256.Sum256(page[start:end])
+	policy = "default-src 'none'; " +
+		"script-src https://cdn.jsdelivr.net 'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'; " +
+		"style-src https://cdn.jsdelivr.net 'unsafe-inline'; " +
+		"img-src 'self' data:; font-src https://cdn.jsdelivr.net; connect-src 'self'; " +
+		"base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+	return page, policy
 }

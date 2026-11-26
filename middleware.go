@@ -104,7 +104,7 @@ func (a *accessLog) skipped(p string) bool {
 // and the request ID, plus whatever code added with LogAttrs. It logs at error level for a 5xx
 // status, at warn level for a slow request (see SlowAfter) and at info level otherwise.
 //
-// The address is the one of the connection: behind a proxy, that is the proxy.
+// The address is the one of the connection, or of the client when TrustProxies is used.
 func AccessLog(logger *slog.Logger, opts ...AccessLogOption) Middleware {
 	var config accessLog
 	for _, opt := range opts {
@@ -141,7 +141,15 @@ func AccessLog(logger *slog.Logger, opts ...AccessLogOption) Middleware {
 						attrs = append(attrs, slog.String("route", route))
 					}
 				}
-				attrs = append(attrs, slog.String("remote_addr", remoteHost(r)))
+				remote := remoteHost(r)
+				if f := logFieldsFrom(r.Context()); f != nil {
+					f.mu.Lock()
+					if f.clientIP != "" {
+						remote = f.clientIP
+					}
+					f.mu.Unlock()
+				}
+				attrs = append(attrs, slog.String("remote_addr", remote))
 				if agent := r.UserAgent(); agent != "" {
 					attrs = append(attrs, slog.String("user_agent", agent))
 				}

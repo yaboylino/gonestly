@@ -160,13 +160,14 @@ func (s *server) recovered(next http.Handler) http.Handler {
 }
 
 func (s *server) serveOpenAPI(config OpenAPIConfig) {
-	ui := renderSwaggerUI(config.Title, relativeURL(config.DocsPath, config.JSONPath))
+	ui, uiPolicy := renderSwaggerUI(config.Title, relativeURL(config.DocsPath, config.JSONPath))
 	s.mux.HandleFunc("GET "+config.JSONPath, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = w.Write(s.openAPI)
 	})
 	s.mux.HandleFunc("GET "+config.DocsPath, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Security-Policy", uiPolicy)
 		_, _ = w.Write(ui)
 	})
 }
