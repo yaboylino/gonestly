@@ -30,7 +30,7 @@ jobs:
           go-version: ${{ matrix.go }}
       - name: Verify modules
         shell: bash
-        run: for m in . validator sql jwt jobs password cmd/gonestly examples/tasks; do (cd $m && go mod verify) || exit 1; done
+        run: for m in . validator sql jwt jobs password cache redis cmd/gonestly examples/tasks; do (cd $m && go mod verify) || exit 1; done
       - name: Test
         shell: bash
         run: |
@@ -40,6 +40,8 @@ jobs:
           (cd jwt && go test -race -shuffle=on ./...)
           (cd jobs && go test -race -shuffle=on ./...)
           (cd password && go test -race -shuffle=on ./...)
+          (cd cache && go test -race -shuffle=on ./...)
+          (cd redis && go test -race -shuffle=on ./...)
           (cd cmd/gonestly && go test -race -shuffle=on ./...)
           (cd examples/tasks && go test -race -shuffle=on ./...)
       - name: Coverage summary
@@ -124,6 +126,27 @@ jobs:
           GONESTLY_TEST_MYSQL: root:gonestly@tcp(127.0.0.1:3306)/gonestly
         run: go test -race -shuffle=on -v -run TestCreateOnServers/mysql ./internal/dbsetup 2>&1 | tee /dev/stderr | (! grep -q "SKIP")
 
+  redis:
+    name: Redis
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: "1.27.x"
+      - name: Test
+        working-directory: redis
+        env:
+          GONESTLY_TEST_REDIS: redis://localhost:6379/0
+        run: go test -race -shuffle=on -v ./... 2>&1 | tee /dev/stderr | (! grep -q "SKIP")
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -135,7 +158,7 @@ jobs:
         with:
           go-version: "1.27.x"
       - name: Check go.mod is tidy
-        run: for m in . validator sql jwt jobs password cmd/gonestly examples/tasks; do (cd $m && go mod tidy -diff) || exit 1; done
+        run: for m in . validator sql jwt jobs password cache redis cmd/gonestly examples/tasks; do (cd $m && go mod tidy -diff) || exit 1; done
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.15.0
@@ -167,6 +190,16 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.15.0
+          working-directory: cache
+          args: --config ../.golangci.yml
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          working-directory: redis
+          args: --config ../.golangci.yml
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
           working-directory: cmd/gonestly
           args: --config ../../.golangci.yml
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -186,4 +219,4 @@ jobs:
         with:
           go-version: "1.27.x"
       - name: Run govulncheck
-        run: for m in . validator sql jwt jobs password cmd/gonestly examples/tasks; do (cd $m && go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...) || exit 1; done
+        run: for m in . validator sql jwt jobs password cache redis cmd/gonestly examples/tasks; do (cd $m && go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...) || exit 1; done
