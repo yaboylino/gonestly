@@ -44,6 +44,10 @@ github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UV
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
+github.com/yaboylino/gonestly v0.1.0 h1:7S/aJMUJi9P33Gx6Ytal6mWm6Qi8rfhTWgg7JyUeBcQ=
+github.com/yaboylino/gonestly v0.1.0/go.mod h1:zyIXy2jwJ/fWqwmxgPADcHcAYiqrPTAVhAyOtmnMtGA=
+github.com/yaboylino/gonestly/sql v0.1.0 h1:hZl2Jj4J1HYrg/F94LJZi84aKsWf+8dXu9pMSmMLqps=
+github.com/yaboylino/gonestly/sql v0.1.0/go.mod h1:qeeafSiew/K3/9OGsGp2qeSBHKd8/WxLwygEYTVefLY=
 go.yaml.in/yaml/v3 v3.0.4/go.mod h1:DhzuOOF2ATzADvBadXxruRBLzYTpT36CKvDb3+aBEFg=
 golang.org/x/mod v0.42.0 h1:ICeL3t2L30ljSPHHxDnR4fqVcBt/zR2zJAb9juavmQg=
 golang.org/x/mod v0.42.0/go.mod h1:u5fzIrRInkL8MaO1cbRkUHT64v303YIT5KEqpNr7jRs=
