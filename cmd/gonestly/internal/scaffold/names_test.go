@@ -43,3 +43,15 @@ func TestCheckGenerated(t *testing.T) {
 		}
 	}
 }
+
+func TestFrameworkVersion(t *testing.T) {
+	for gomod, want := range map[string]string{
+		"module x\n\nrequire github.com/yaboylino/gonestly v0.2.0\n":                     "v0.2.0",
+		"module x\n\nrequire (\n\tgithub.com/yaboylino/gonestly v0.3.1 // indirect\n)\n": "v0.3.1",
+		"module x\n": "latest",
+	} {
+		if got := frameworkVersion(gomod); got != want {
+			t.Errorf("frameworkVersion(%q) = %s, want %s", gomod, got, want)
+		}
+	}
+}

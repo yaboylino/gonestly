@@ -176,3 +176,20 @@ var PostRelations = struct {
 		t.Errorf("a relation that is a string = %v", err)
 	}
 }
+
+func TestGenerateRejectsBadRelationShapes(t *testing.T) {
+	for name, field := range map[string]string{
+		"slice of pointers": "[]*Remark",
+		"array":             "[3]Remark",
+		"pointer pointer":   "**Remark",
+	} {
+		dir := t.TempDir()
+		source := "package blog\n\ntype Post struct {\n\tID int64 `db:\"id\"`\n\tRemarks " + field + " `rel:\"post_id\"`\n}\n\ntype Remark struct {\n\tID int64 `db:\"id\"`\n}\n"
+		if err := os.WriteFile(filepath.Join(dir, "model.go"), []byte(source), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Generate(dir); err == nil || !strings.Contains(err.Error(), "a relation is a") {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+}

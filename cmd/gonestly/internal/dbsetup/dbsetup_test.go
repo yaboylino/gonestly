@@ -51,8 +51,18 @@ func TestDSN(t *testing.T) {
 	}{
 		"postgres": {
 			Config{Kind: "postgres", Host: "db.internal", Port: 5432, User: "app user", Password: "p@ss/w:rd?#", Name: "shop"},
-			"postgres://app%20user:p%40ss%2Fw%3Ard%3F%23@db.internal:5432/shop?sslmode=disable",
-			"postgres://app%20user:password@db.internal:5432/shop?sslmode=disable", "pgx",
+			"postgres://app%20user:p%40ss%2Fw%3Ard%3F%23@db.internal:5432/shop?sslmode=require",
+			"postgres://app%20user:password@db.internal:5432/shop?sslmode=require", "pgx",
+		},
+		"postgres with a chosen mode": {
+			Config{Kind: "postgres", Host: "db.internal", Port: 5432, User: "u", Password: "p", Name: "shop", SSL: "verify-full"},
+			"postgres://u:p@db.internal:5432/shop?sslmode=verify-full",
+			"postgres://u:password@db.internal:5432/shop?sslmode=verify-full", "pgx",
+		},
+		"mysql on another host": {
+			Config{Kind: "mysql", Host: "db.internal", Port: 3306, User: "u", Password: "p", Name: "shop"},
+			"u:p@tcp(db.internal:3306)/shop?parseTime=true&tls=preferred",
+			"u:password@tcp(db.internal:3306)/shop?parseTime=true&tls=preferred", "mysql",
 		},
 		"postgres on IPv6": {
 			Config{Kind: "postgres", Host: "::1", Port: 5433, User: "u", Password: "p", Name: "shop"},
@@ -181,5 +191,26 @@ func TestCreateOnServers(t *testing.T) {
 				t.Errorf("an unreachable server = %v", err)
 			}
 		})
+	}
+}
+
+func TestValidateRejectsUnknownTLSSetting(t *testing.T) {
+	c := Config{Kind: "postgres", Host: "h", Port: 5432, User: "u", Name: "shop", SSL: "maybe"}
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "TLS setting") {
+		t.Errorf("err = %v", err)
+	}
+	c = Config{Kind: "mysql", Host: "h", Port: 3306, User: "u", Name: "shop", SSL: "require"}
+	if err := c.Validate(); err == nil {
+		t.Error("require is not a MySQL setting")
+	}
+}
+
+func TestCreateSQLiteRelativeToDir(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Create(t.Context(), Config{Kind: "sqlite", Name: "data/shop.db", Dir: root}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "data")); err != nil {
+		t.Errorf("the directory was not made in the project: %v", err)
 	}
 }

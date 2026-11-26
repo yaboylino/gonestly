@@ -18,19 +18,21 @@ type Path[From any] interface {
 
 type includeNode struct {
 	name     string
+	target   reflect.Type
 	children []includeNode
 }
 
 // Rel names a relation of From to rows of To, such as the posts of a user. `gonestly generate
 // columns` writes one for every relation of a model, in <Model>Relations.
 type Rel[From, To any] struct {
-	name  string
-	inner []includeNode
+	name   string
+	target reflect.Type
+	inner  []includeNode
 }
 
 // Relation returns the relation that the field with the given Go name declares.
 func Relation[From, To any](field string) Rel[From, To] {
-	return Rel[From, To]{name: field}
+	return Rel[From, To]{name: field, target: reflect.TypeFor[To]()}
 }
 
 // With also loads relations of the related rows, such as the comments of the posts of a user.
@@ -43,8 +45,10 @@ func (r Rel[From, To]) With(inner ...Path[To]) Rel[From, To] {
 	return r
 }
 
-func (r Rel[From, To]) node() includeNode { return includeNode{name: r.name, children: r.inner} }
-func (Rel[From, To]) from(From)           {}
+func (r Rel[From, To]) node() includeNode {
+	return includeNode{name: r.name, target: r.target, children: r.inner}
+}
+func (Rel[From, To]) from(From) {}
 
 func includeNodes[T any](paths []Path[T]) []includeNode {
 	nodes := make([]includeNode, len(paths))
@@ -60,6 +64,10 @@ func checkNodes(m *model, nodes []includeNode) error {
 		rel, err := m.relation(node.name)
 		if err != nil {
 			return err
+		}
+		if node.target != nil && node.target != rel.target {
+			return fmt.Errorf("%w: %s.%s holds %s, not %s; regenerate the relations with gonestly generate columns",
+				ErrInvalidModel, m.typ.Name(), node.name, rel.target.Name(), node.target.Name())
 		}
 		if err := checkNodes(rel.targetModel, node.children); err != nil {
 			return err

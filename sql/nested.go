@@ -21,20 +21,39 @@ func (r *Repository[T, ID]) CreateNested(ctx context.Context, v *T) error {
 	if err := r.model.resolveRelations(); err != nil {
 		return err
 	}
-	return r.db.Transaction(ctx, func(ctx context.Context) error {
-		return createNested(ctx, r.store, reflect.ValueOf(v).Elem(), map[uintptr]bool{})
+	st := &nestedState{seen: map[uintptr]bool{}}
+	err := r.db.Transaction(ctx, func(ctx context.Context) error {
+		return createNested(ctx, r.store, reflect.ValueOf(v).Elem(), st)
 	})
+	if err != nil {
+		// The rolled back rows do not exist, so their keys must not look as if they do.
+		for i := len(st.keys) - 1; i >= 0; i-- {
+			st.keys[i].field.Set(st.keys[i].value)
+		}
+	}
+	return err
 }
 
-// createNested inserts the row in rv and the rows around it. seen holds the rows that are
-// handled, so that rows that point at each other are inserted once.
-func createNested(ctx context.Context, s store, rv reflect.Value, seen map[uintptr]bool) error {
-	if seen[rv.Addr().Pointer()] {
+// nestedState holds the rows that are handled, so that rows that point at each other are
+// inserted once, and the primary keys they had before, to restore them when the insert fails.
+type nestedState struct {
+	seen map[uintptr]bool
+	keys []savedKey
+}
+
+type savedKey struct{ field, value reflect.Value }
+
+// createNested inserts the row in rv and the rows around it.
+func createNested(ctx context.Context, s store, rv reflect.Value, st *nestedState) error {
+	if st.seen[rv.Addr().Pointer()] {
 		return nil
 	}
-	seen[rv.Addr().Pointer()] = true
+	st.seen[rv.Addr().Pointer()] = true
 	if err := s.model.resolveRelations(); err != nil {
 		return err
+	}
+	if s.model.pk == nil {
+		return fmt.Errorf("%w: %s has no primary key, which CreateNested needs to link rows", ErrInvalidModel, s.model.typ.Name())
 	}
 
 	// The rows that this row belongs to come first: they hold the key that this row needs.
@@ -45,7 +64,7 @@ func createNested(ctx context.Context, s store, rv reflect.Value, seen map[uintp
 		}
 		parent := field.Elem()
 		if parent.FieldByIndex(rel.targetModel.pk.index).IsZero() {
-			if err := createNested(ctx, store{db: s.db, model: rel.targetModel}, parent, seen); err != nil {
+			if err := createNested(ctx, store{db: s.db, model: rel.targetModel}, parent, st); err != nil {
 				return fmt.Errorf("sql: creating %s.%s: %w", s.model.typ.Name(), rel.name, err)
 			}
 		}
@@ -54,6 +73,10 @@ func createNested(ctx context.Context, s store, rv reflect.Value, seen map[uintp
 		}
 	}
 
+	pk := rv.FieldByIndex(s.model.pk.index)
+	saved := reflect.New(pk.Type()).Elem()
+	saved.Set(pk)
+	st.keys = append(st.keys, savedKey{field: pk, value: saved})
 	if err := s.create(ctx, rv); err != nil {
 		return err
 	}
@@ -76,7 +99,7 @@ func createNested(ctx context.Context, s store, rv reflect.Value, seen map[uintp
 			if err := copyKey(child.FieldByIndex(rel.otherField.index), rv.FieldByIndex(rel.ownerField.index)); err != nil {
 				return fmt.Errorf("sql: %s.%s: %w", s.model.typ.Name(), rel.name, err)
 			}
-			if err := createNested(ctx, store{db: s.db, model: rel.targetModel}, child, seen); err != nil {
+			if err := createNested(ctx, store{db: s.db, model: rel.targetModel}, child, st); err != nil {
 				return fmt.Errorf("sql: creating %s.%s: %w", s.model.typ.Name(), rel.name, err)
 			}
 		}

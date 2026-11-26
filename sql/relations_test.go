@@ -222,7 +222,7 @@ type Topic struct {
 	ID       int64   `db:"id"`
 	Name     string  `db:"name"`
 	ParentID *int64  `db:"parent_id"`
-	Parent   *Topic  `rel:"parent_id"`
+	Parent   *Topic  `rel:"parent_id,belongs"`
 	Children []Topic `rel:"parent_id"`
 }
 
@@ -360,6 +360,9 @@ func TestCreateNested(t *testing.T) {
 		}
 		if n, _ := posts.Count(ctx, sql.Col[string]("title").Eq("Unique")); n != 0 {
 			t.Errorf("a post was kept: %d", n)
+		}
+		if failing.ID != 0 || failing.Posts[0].ID != 0 {
+			t.Errorf("keys of rolled back rows were kept: %d, %d", failing.ID, failing.Posts[0].ID)
 		}
 
 		// Rows that point at each other are inserted once.

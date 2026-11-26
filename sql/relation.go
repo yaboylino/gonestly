@@ -33,6 +33,9 @@ type relation struct {
 	// the primary key.
 	key        string
 	references string
+	// direction is hasOne or belongsTo when the tag says which side holds the key, and
+	// otherwise the direction of a pointer is read from the columns.
+	direction *relationKind
 
 	targetModel *model
 	// ownerField is the field of the model that declares the relation that takes part in the
@@ -40,7 +43,7 @@ type relation struct {
 	ownerField, otherField *field
 }
 
-// parseRelation reads a field tagged rel:"<key column>[,references=<column>]".
+// parseRelation reads a field tagged rel:"<key column>[,references=<column>][,has|belongs]".
 func parseRelation(owner reflect.Type, sf reflect.StructField, tag string) (*relation, string) {
 	where := owner.Name() + "." + sf.Name
 	key, options, _ := strings.Cut(tag, ",")
@@ -55,8 +58,14 @@ func parseRelation(owner reflect.Type, sf reflect.StructField, tag string) (*rel
 		case option == "":
 		case name == "references" && value != "":
 			rel.references = value
+		case option == "has", option == "belongs":
+			kind := hasOne
+			if option == "belongs" {
+				kind = belongsTo
+			}
+			rel.direction = &kind
 		default:
-			return nil, fmt.Sprintf("%s has the unknown rel option %q; use references=<column>", where, option)
+			return nil, fmt.Sprintf("%s has the unknown rel option %q; use references=<column>, has or belongs", where, option)
 		}
 	}
 
@@ -116,6 +125,20 @@ func (m *model) resolve(rel *relation) string {
 		return fmt.Sprintf("%s points at %s, which is not a valid model: %v", where, rel.target.Name(), err)
 	}
 	rel.targetModel = target
+
+	if rel.kind != hasMany {
+		switch {
+		case rel.direction != nil:
+			rel.kind = *rel.direction
+		case m.byColumn[rel.key] != nil && target.byColumn[rel.key] != nil:
+			return fmt.Sprintf("%s is ambiguous: both %s and %s have the column %q; add ,belongs if %s holds the key or ,has if %s does",
+				where, m.typ.Name(), target.typ.Name(), rel.key, m.typ.Name(), target.typ.Name())
+		case m.byColumn[rel.key] != nil:
+			rel.kind = belongsTo
+		}
+	} else if rel.direction != nil {
+		return where + " is a slice, which always holds rows that carry the key; remove has or belongs"
+	}
 
 	// The side that holds the key, and the side that is pointed at.
 	holder, pointed := target, m

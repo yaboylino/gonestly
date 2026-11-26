@@ -86,7 +86,7 @@ func TestCompleteConfigWithoutTerminal(t *testing.T) {
 }
 
 func TestDefaultName(t *testing.T) {
-	for module, want := range map[string]string{"example.com/my-shop": "my_shop", "shop": "shop", "example.com/2fast": "app_2fast", "github.com/acme/Shop.API": "shop_api"} {
+	for module, want := range map[string]string{"example.com/my-shop": "my_shop", "shop": "shop", "example.com/2fast": "app_2fast", "github.com/acme/Shop.API": "shop_api", "example.com/shop/v2": "shop", "example.com/a~b+c": "a_b_c"} {
 		if got := defaultName(&project.Project{Module: module}); got != want {
 			t.Errorf("defaultName(%s) = %s, want %s", module, got, want)
 		}
@@ -145,5 +145,37 @@ func TestAddDatabaseToProject(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(shop, "data", "shop.db")); err != nil {
 		t.Errorf("the database file was not made by the migration: %v", err)
+	}
+}
+
+func TestAddDatabaseLeavesProjectAloneOnFailure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("creates a project")
+	}
+	work := t.TempDir()
+	if out, code := run(t, work, "new", "shop", "--module", "example.com/shop", "--replace", repoRoot(t)); code != 0 {
+		t.Fatalf("new failed:\n%s", out)
+	}
+	shop := filepath.Join(work, "shop")
+	files := []string{"main.go", ".env", ".env.example", filepath.Join("internal", "app", "module.go"), filepath.Join("internal", "app", "config.go")}
+	before := map[string][]byte{}
+	for _, f := range files {
+		before[f], _ = os.ReadFile(filepath.Join(shop, f))
+	}
+
+	t.Setenv(passwordEnv, "")
+	if out, code := run(t, shop, "add", "database", "postgres", "--host", "127.0.0.1", "--port", "1", "--user", "x", "--password=", "--name", "shop"); code == 0 {
+		t.Fatalf("an unreachable server worked:\n%s", out)
+	}
+	for _, f := range files {
+		if got, _ := os.ReadFile(filepath.Join(shop, f)); !bytes.Equal(got, before[f]) {
+			t.Errorf("%s changed:\n%s", f, got)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(shop, "migrations")); err == nil {
+		t.Error("the migrations directory was left behind")
+	}
+	if out, code := run(t, shop, "add", "database", "sqlite"); code != 0 {
+		t.Errorf("adding again after the failure:\n%s", out)
 	}
 }

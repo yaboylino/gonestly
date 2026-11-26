@@ -209,8 +209,17 @@ func relationTarget(f *ast.Field, imports, used map[string]string) (string, erro
 	expr := f.Type
 	switch t := expr.(type) {
 	case *ast.ArrayType:
+		if t.Len != nil {
+			return "", errors.New("a relation is a slice of structs, not an array")
+		}
+		if _, ok := t.Elt.(*ast.StarExpr); ok {
+			return "", errors.New("a relation is a slice of structs, not of pointers")
+		}
 		expr = t.Elt
 	case *ast.StarExpr:
+		if _, ok := t.X.(*ast.StarExpr); ok {
+			return "", errors.New("a relation is a pointer to a struct, not to a pointer")
+		}
 		expr = t.X
 	default:
 		return "", errors.New("a relation is a slice of structs or a pointer to a struct")
