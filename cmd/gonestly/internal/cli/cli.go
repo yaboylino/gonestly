@@ -267,17 +267,26 @@ func printRoutes(w io.Writer, data []byte) error {
 	return tw.Flush()
 }
 
+// version is set by the linker for released binaries; go install records it in the build info.
+var version string
+
+func toolVersion() string {
+	if version != "" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
+		return info.Main.Version
+	}
+	return "(devel)"
+}
+
 func versionCommand(stdout io.Writer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print the version of the gonestly tool",
 		Args:  cobra.NoArgs,
 		Run: func(*cobra.Command, []string) {
-			version := "(devel)"
-			if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
-				version = info.Main.Version
-			}
-			fmt.Fprintln(stdout, "gonestly", version)
+			fmt.Fprintln(stdout, "gonestly", toolVersion())
 		},
 	}
 }

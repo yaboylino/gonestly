@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: ["cmd/gonestly/v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    name: Binaries
+    runs-on: ubuntu-latest
+    env:
+      GOWORK: "off"
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: "1.27.x"
+      - name: Build
+        working-directory: cmd/gonestly
+        run: |
+          version="${GITHUB_REF_NAME#cmd/gonestly/}"
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            os="${target%/*}" arch="${target#*/}"
+            dir="$(mktemp -d)" name="gonestly_${version#v}_${os}_${arch}" binary=gonestly
+            [ "$os" = windows ] && binary=gonestly.exe
+            GOOS="$os" GOARCH="$arch" go build -trimpath \
+              -ldflags "-s -w -X github.com/yaboylino/gonestly/cmd/gonestly/internal/cli.version=$version" \
+              -o "$dir/$binary" .
+            cp "$GITHUB_WORKSPACE/LICENSE" "$GITHUB_WORKSPACE/README.md" "$dir"
+            if [ "$os" = windows ]; then
+              (cd "$dir" && zip -q "$GITHUB_WORKSPACE/dist/$name.zip" ./*)
+            else
+              tar -C "$dir" -czf "$GITHUB_WORKSPACE/dist/$name.tar.gz" .
+            fi
+          done
+          (cd "$GITHUB_WORKSPACE/dist" && sha256sum ./* | sed 's# \./# #' > checksums.txt)
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#cmd/gonestly/}"
+          awk -v section="## [${version#v}]" 'index($0, section) == 1 { found = 1; next } found && /^## \[/ { exit } found' CHANGELOG.md > notes.md
+          gh release create "$version" dist/* --title "$version" --notes-file notes.md --verify-tag

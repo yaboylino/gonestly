@@ -57,7 +57,11 @@ Use `feat!:` or a `BREAKING CHANGE:` footer for breaking changes.
 
 ## Releasing
 
-The root module is tagged as `vX.Y.Z` and each nested module as `<dir>/vX.Y.Z`, such as
-`validator/v0.1.0`. Before tagging a nested module, replace its `replace` directives with a
-`require` of the released versions: `go install` refuses a module whose go.mod still contains
-`replace` directives, so the CLI cannot be installed until then.
+`scripts/release.sh v0.2.0` releases every module at once. It runs the checks, moves the
+"Unreleased" entries of `CHANGELOG.md` to the new version, and tags the root module as `vX.Y.Z`
+and each nested module as `<dir>/vX.Y.Z`, such as `sql/v0.2.0`. The release workflow then
+publishes the binaries of the CLI.
+
+The modules are developed together through `go.work`. The CLI is tagged in a second commit that
+requires the versions just released, because `go install` refuses a module whose go.mod has
+`replace` directives.
