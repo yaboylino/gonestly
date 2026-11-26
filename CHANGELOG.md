@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-26
+
 ### Added
 
 - Relations between models: a field tagged `rel` holds the related rows, and `Include`,
