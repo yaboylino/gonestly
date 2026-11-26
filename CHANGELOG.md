@@ -6,6 +6,19 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Added
+
+- `jobs` module: background jobs and cron in the database of the application. `jobs.Define`
+  registers a handler and returns a typed job; `Enqueue` stores it, also inside a transaction,
+  with `Delay`, `At`, `Unique` and `Priority`. Failed runs are retried with a growing delay,
+  panics and timeouts are handled, and `Permanent` stops retries. `Job.Schedule` runs a job on a
+  cron schedule (or `@every`), once per moment however many instances run. Workers take jobs
+  without taking one twice, put back what a shutdown interrupted, take over from a process that
+  died, and clean up finished jobs. `Stats`, `Failed`, `Retry` and `RunDue` help to operate
+  and test.
+- `gonestly add jobs` creates the jobs table as a migration for the database of the project and
+  adds the module to the root module.
+
 ## [0.3.0] - 2026-11-26
 
 ### Added

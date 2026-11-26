@@ -32,7 +32,7 @@ func addCommand(printer *term.Printer, stdout io.Writer) *cobra.Command {
 		Use:   "add",
 		Short: "Add something to an existing project",
 	}
-	cmd.AddCommand(databaseCommand(printer, stdout))
+	cmd.AddCommand(databaseCommand(printer, stdout), jobsCommand(printer))
 	return cmd
 }
 
