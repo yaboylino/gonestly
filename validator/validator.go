@@ -23,7 +23,7 @@ import (
 	"github.com/yaboylino/gonestly"
 )
 
-var sources = []string{"path", "query", "header"}
+var sources = []string{"path", "query", "header", "form"}
 
 // Validator checks struct tags and turns failures into a gonestly validation error.
 type Validator struct {
@@ -76,7 +76,7 @@ func (v *Validator) ValidateStruct(value any) error {
 	return gonestly.Invalid(fields...)
 }
 
-// fieldName names a field the way the client sends it: its path, query, header or JSON name.
+// fieldName names a field the way the client sends it: its path, query, header, form or JSON name.
 func fieldName(f reflect.StructField) string {
 	for _, tag := range append(sources, "json") {
 		name, _, _ := strings.Cut(f.Tag.Get(tag), ",")

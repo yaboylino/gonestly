@@ -11,6 +11,12 @@ All notable changes to this project are documented in this file. The format is b
 - `ServerConfig.CORS`, which lets pages on other origins call the API: it answers preflight
   requests and reports a mistake in the configuration when the application starts. New
   projects read the origins from `CORS_ORIGINS`.
+- Forms and file uploads: the `form` tag reads a field from a URL encoded or multipart form,
+  and a field of type `File`, `*File` or `[]File` receives uploaded files. Forms are described
+  in the OpenAPI document, and `gonestlytest` sends them with `url.Values` and `Form`.
+- `MaxBodyBytes`, a route option that sets the largest request body of one route.
+- `RateLimit`, middleware that answers 429 when a client sends too many requests, with the
+  `RateLimit` headers and `Retry-After`.
 - `examples/tasks`, a complete application with two feature modules, a guard, transactions
   across modules and tests.
 

@@ -50,6 +50,7 @@ type route struct {
 	call         func(ctx context.Context, req reflect.Value) (any, error)
 	raw          http.Handler
 	status       int
+	maxBodyBytes int64
 	emptyResult  bool
 	guards       []Guard
 	interceptors []Interceptor
@@ -100,6 +101,7 @@ type RouteOption func(*routeOptions)
 
 type routeOptions struct {
 	status       int
+	maxBodyBytes int64
 	guards       []Guard
 	interceptors []Interceptor
 	docs         routeDocs
@@ -145,6 +147,12 @@ func Deprecated() RouteOption {
 // an Empty response and 200 otherwise.
 func Status(code int) RouteOption {
 	return func(o *routeOptions) { o.status = code }
+}
+
+// MaxBodyBytes sets the largest request body of one route, instead of the limit of the server,
+// for example on a route that takes uploads.
+func MaxBodyBytes(n int64) RouteOption {
+	return func(o *routeOptions) { o.maxBodyBytes = n }
 }
 
 // WithGuards adds guards to one route, after the guards of the router.
@@ -225,6 +233,7 @@ func (r *Router) newRoute(method, path string, opts []RouteOption) *route {
 		controller:   r.controller,
 		module:       r.module,
 		status:       o.status,
+		maxBodyBytes: o.maxBodyBytes,
 		docs:         o.docs,
 		guards:       append(slices.Clip(r.guards), o.guards...),
 		interceptors: append(slices.Clip(r.interceptors), o.interceptors...),
@@ -232,6 +241,9 @@ func (r *Router) newRoute(method, path string, opts []RouteOption) *route {
 	}
 	if o.status != 0 && (o.status < 200 || o.status > 399) {
 		rt.problems = append(rt.problems, fmt.Sprintf("the status %d is not a success status", o.status))
+	}
+	if o.maxBodyBytes < 0 {
+		rt.problems = append(rt.problems, fmt.Sprintf("the body limit %d is negative", o.maxBodyBytes))
 	}
 	*r.routes = append(*r.routes, rt)
 	return rt

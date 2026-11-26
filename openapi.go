@@ -247,6 +247,9 @@ func buildOperation(g *schemaGenerator, rt *route, guards []Guard, schemes map[s
 	hasInput := false
 	if rt.binder != nil {
 		for _, f := range rt.binder.fields {
+			if f.in == "form" {
+				continue
+			}
 			sf := rt.reqType.FieldByIndex(f.index)
 			paramType := sf.Type
 			if paramType.Kind() == reflect.Pointer {
@@ -271,6 +274,17 @@ func buildOperation(g *schemaGenerator, rt *route, guards []Guard, schemes map[s
 			op.RequestBody = &openAPIRequestBody{
 				Required: true,
 				Content:  map[string]openAPIMediaType{"application/json": {Schema: bodySchema(g, rt)}},
+			}
+			hasInput = true
+		}
+		if rt.binder.form {
+			mediaType := "application/x-www-form-urlencoded"
+			if rt.binder.files {
+				mediaType = "multipart/form-data"
+			}
+			op.RequestBody = &openAPIRequestBody{
+				Required: true,
+				Content:  map[string]openAPIMediaType{mediaType: {Schema: formSchema(g, rt)}},
 			}
 			hasInput = true
 		}
@@ -318,6 +332,26 @@ func bodySchema(g *schemaGenerator, rt *route) *Schema {
 		}
 		s.Properties = append(s.Properties, Property{Name: f.name, Schema: describe(g.schema(f.field.Type), f.field)})
 		if f.required {
+			s.Required = append(s.Required, f.name)
+		}
+	}
+	return s
+}
+
+// formSchema describes the fields of a form; a file is required unless it is a pointer.
+func formSchema(g *schemaGenerator, rt *route) *Schema {
+	s := &Schema{Type: "object", Properties: Properties{}}
+	for _, f := range rt.binder.fields {
+		if f.in != "form" {
+			continue
+		}
+		sf := rt.reqType.FieldByIndex(f.index)
+		fieldType := sf.Type
+		if fieldType.Kind() == reflect.Pointer {
+			fieldType = fieldType.Elem()
+		}
+		s.Properties = append(s.Properties, Property{Name: f.name, Schema: describe(g.schema(fieldType), sf)})
+		if sf.Type == fileType || hasRule(sf, "required") {
 			s.Required = append(s.Required, f.name)
 		}
 	}

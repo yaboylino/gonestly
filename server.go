@@ -1,6 +1,7 @@
 package gonestly
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -219,7 +220,11 @@ func (s *server) routeHandler(rt *route) http.Handler {
 			return
 		}
 
-		req, err := rt.binder.bind(w, r, s.config.MaxBodyBytes)
+		req, err := rt.binder.bind(w, r, cmp.Or(rt.maxBodyBytes, s.config.MaxBodyBytes))
+		if r.MultipartForm != nil {
+			// Uploaded files that did not fit in memory are on disk until the request is done.
+			defer func() { _ = r.MultipartForm.RemoveAll() }()
+		}
 		if err == nil {
 			err = s.validate(req)
 		}

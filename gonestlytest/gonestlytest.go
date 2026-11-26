@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -82,17 +84,17 @@ func (a *App) Delete(path string, headers ...string) *Response {
 	return a.Request(http.MethodDelete, path, nil, headers...)
 }
 
-// Request sends a request. A string, []byte or io.Reader body is sent as is; any other non-nil
-// body is encoded as JSON. Headers are given as name and value pairs.
+// Request sends a request. A string, []byte or io.Reader body is sent as is, url.Values as a
+// URL encoded form and a Form as a multipart form; any other non-nil body is encoded as JSON. Headers are given as name and value pairs.
 func (a *App) Request(method, path string, body any, headers ...string) *Response {
 	a.t.Helper()
 	if len(headers)%2 != 0 {
 		a.t.Fatalf("gonestlytest: headers must be name and value pairs, got %d values", len(headers))
 	}
-	reader, isJSON := a.encode(body)
+	reader, contentType := a.encode(body)
 	req := httptest.NewRequestWithContext(a.t.Context(), method, path, reader)
-	if isJSON {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	for i := 0; i < len(headers); i += 2 {
 		req.Header.Set(headers[i], headers[i+1])
@@ -115,22 +117,65 @@ func (a *App) Do(req *http.Request) *Response {
 	return &Response{Status: result.StatusCode, Header: result.Header, Body: data, t: a.t}
 }
 
-func (a *App) encode(body any) (io.Reader, bool) {
+// Form is a multipart form to send as the body of a request, with its fields and files.
+type Form struct {
+	Values url.Values
+	Files  []FormFile
+}
+
+// FormFile is one file in a Form: the form field, the file name and the content.
+type FormFile struct {
+	Field   string
+	Name    string
+	Content []byte
+}
+
+// encode returns the body and the content type that it needs, if any.
+func (a *App) encode(body any) (io.Reader, string) {
 	switch b := body.(type) {
 	case nil:
-		return nil, false
+		return nil, ""
 	case string:
-		return strings.NewReader(b), false
+		return strings.NewReader(b), ""
 	case []byte:
-		return bytes.NewReader(b), false
+		return bytes.NewReader(b), ""
 	case io.Reader:
-		return b, false
+		return b, ""
+	case url.Values:
+		return strings.NewReader(b.Encode()), "application/x-www-form-urlencoded"
+	case Form:
+		return a.multipart(b)
 	}
 	data, err := json.Marshal(body)
 	if err != nil {
 		a.t.Fatalf("gonestlytest: encoding the request body: %v", err)
 	}
-	return bytes.NewReader(data), true
+	return bytes.NewReader(data), "application/json"
+}
+
+func (a *App) multipart(form Form) (io.Reader, string) {
+	var buffer bytes.Buffer
+	writer := multipart.NewWriter(&buffer)
+	for name, values := range form.Values {
+		for _, value := range values {
+			if err := writer.WriteField(name, value); err != nil {
+				a.t.Fatalf("gonestlytest: encoding the form: %v", err)
+			}
+		}
+	}
+	for _, file := range form.Files {
+		part, err := writer.CreateFormFile(file.Field, file.Name)
+		if err == nil {
+			_, err = part.Write(file.Content)
+		}
+		if err != nil {
+			a.t.Fatalf("gonestlytest: encoding the form: %v", err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		a.t.Fatalf("gonestlytest: encoding the form: %v", err)
+	}
+	return &buffer, writer.FormDataContentType()
 }
 
 // Response is the recorded response to a request.
