@@ -9,7 +9,8 @@ A modular application framework for Go, inspired by [NestJS](https://nestjs.com)
 modules, dependency injection, typed HTTP handlers, a type-safe SQL layer and a CLI that generates
 and runs your code, while staying plain, idiomatic Go.
 
-> **Status:** in active development. The API below is a preview and will change before `v0.1.0`.
+> **Status:** `v0.1.0` is the first release. Until `v1.0.0` a minor version may change the API; the
+> [changelog](CHANGELOG.md) lists every change.
 
 **[Read the documentation](https://yaboylino.github.io/gonestly-docs)** in English or Dutch.
 
@@ -26,6 +27,18 @@ and runs your code, while staying plain, idiomatic Go.
   builder for the rest, and raw SQL that scans straight into structs when you need full control.
 - **A CLI for the boring parts.** Generate a module, a controller or a full CRUD resource, run
   migrations and develop with instant feedback on every save.
+
+## Install
+
+Gonestly needs Go 1.26 or newer. Install the CLI and create a project:
+
+```sh
+go install github.com/yaboylino/gonestly/cmd/gonestly@latest
+gonestly new shop --database sqlite
+cd shop && gonestly dev
+```
+
+Or add the framework to an existing module with `go get github.com/yaboylino/gonestly`.
 
 ## Preview
 
@@ -126,7 +139,7 @@ your application.
 - [x] CLI: `new`, `generate`, `dev` with live rebuild and restart, `migrate`, `routes` and `openapi`
 - [x] Documentation site in English and Dutch
 - [x] MySQL and MariaDB support
-- [ ] First release: `v0.1.0`
+- [x] First release: `v0.1.0`
 
 ## Contributing
 
