@@ -1,11 +1,15 @@
 package jwt
 
-import "github.com/yaboylino/gonestly"
+import (
+	"log/slog"
+
+	"github.com/yaboylino/gonestly"
+)
 
 // Module returns a global module that provides *Tokens to every module. Import it once, in
 // the root module. Wrong options stop the application from starting.
 func Module(opts Options) *gonestly.Module {
-	return newModule(func() (*Tokens, error) { return New(opts) })
+	return newModule(func(logger *slog.Logger) (*Tokens, error) { return New(withLogger(opts, logger)) })
 }
 
 // ModuleFunc is like Module, but builds the options from a provider of a global module,
@@ -15,7 +19,14 @@ func Module(opts Options) *gonestly.Module {
 //		return jwt.Options{Secret: cfg.JWTSecret, Issuer: "shop"}
 //	})
 func ModuleFunc[C any](options func(C) Options) *gonestly.Module {
-	return newModule(func(c C) (*Tokens, error) { return New(options(c)) })
+	return newModule(func(c C, logger *slog.Logger) (*Tokens, error) { return New(withLogger(options(c), logger)) })
+}
+
+func withLogger(opts Options, logger *slog.Logger) Options {
+	if opts.Logger == nil {
+		opts.Logger = logger
+	}
+	return opts
 }
 
 func newModule(constructor any) *gonestly.Module {

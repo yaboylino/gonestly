@@ -46,6 +46,21 @@ func TestRateLimiter(t *testing.T) {
 	}
 }
 
+func TestClientNetwork(t *testing.T) {
+	for address, want := range map[string]string{
+		"203.0.113.7":          "203.0.113.7",
+		"::ffff:203.0.113.7":   "::ffff:203.0.113.7",
+		"2001:db8:1:2:aaaa::1": "2001:db8:1:2::/64",
+		"2001:db8:1:2:bbbb::9": "2001:db8:1:2::/64",
+		"2001:db8:1:3::1":      "2001:db8:1:3::/64",
+		"not an address":       "not an address",
+	} {
+		if got := clientNetwork(address); got != want {
+			t.Errorf("clientNetwork(%s) = %s, want %s", address, got, want)
+		}
+	}
+}
+
 func TestClientAddress(t *testing.T) {
 	for _, tt := range []struct {
 		forwarded []string

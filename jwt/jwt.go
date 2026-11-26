@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -53,6 +54,9 @@ type Options struct {
 	// RolesClaim is the claim that holds the roles: a list of names or one name. A dot reaches
 	// into an object, as in "realm_access.roles". It defaults to "roles".
 	RolesClaim string
+	// Logger receives the failures to refresh the keys of JWKSURL; Module uses the logger of
+	// the application.
+	Logger *slog.Logger
 }
 
 // Claims is what a token says about its subject.
@@ -135,7 +139,17 @@ func New(opts Options) (*Tokens, error) {
 		// The keys are refreshed until the application stops; a provider that is down at
 		// startup is retried in the background, and tokens are refused until it answers.
 		ctx, cancel := context.WithCancel(context.Background())
-		keys, err := keyfunc.NewDefaultCtx(ctx, []string{opts.JWKSURL})
+		logger := opts.Logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		keys, err := keyfunc.NewDefaultOverrideCtx(ctx, []string{opts.JWKSURL}, keyfunc.Override{
+			RefreshErrorHandlerFunc: func(url string) func(context.Context, error) {
+				return func(ctx context.Context, err error) {
+					logger.ErrorContext(ctx, "jwt: refreshing the keys failed", slog.String("url", url), slog.Any("error", err))
+				}
+			},
+		})
 		if err != nil {
 			cancel()
 			return nil, fmt.Errorf("jwt: reading the keys from %s: %w", opts.JWKSURL, err)

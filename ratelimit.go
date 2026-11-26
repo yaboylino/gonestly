@@ -4,6 +4,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -81,7 +82,7 @@ type rateLimiter struct {
 }
 
 func newRateLimiter(config RateLimitConfig, now func() time.Time) *rateLimiter {
-	if config.Requests <= 0 || config.Window <= 0 {
+	if config.Requests <= 0 || config.Window <= 0 || config.Window < time.Duration(config.Requests) {
 		panic("gonestly: RateLimit needs Requests and Window above zero")
 	}
 	return &rateLimiter{
@@ -130,7 +131,7 @@ func (l *rateLimiter) key(r *http.Request) string {
 	if l.config.Key != nil {
 		return l.config.Key(r)
 	}
-	return clientAddress(r, l.config.TrustedProxies)
+	return clientNetwork(clientAddress(r, l.config.TrustedProxies))
 }
 
 // clientAddress returns the address of the client as seen by the outermost trusted proxy.
@@ -148,4 +149,18 @@ func clientAddress(r *http.Request, trustedProxies int) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// clientNetwork is what a limit counts by: an IPv4 address, or the /64 network of an IPv6
+// address, because one client usually has all the addresses of such a network.
+func clientNetwork(address string) string {
+	ip, err := netip.ParseAddr(address)
+	if err != nil || ip.Unmap().Is4() {
+		return address
+	}
+	prefix, err := ip.Prefix(64)
+	if err != nil {
+		return address
+	}
+	return prefix.String()
 }
