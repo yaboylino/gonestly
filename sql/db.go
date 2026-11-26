@@ -13,7 +13,7 @@ import (
 
 // Options configures a database connection.
 type Options struct {
-	// Driver is the name of a registered database/sql driver, such as "pgx" or "sqlite".
+	// Driver is the name of a registered database/sql driver, such as "pgx", "mysql" or "sqlite".
 	// Import the driver package, for example _ "github.com/jackc/pgx/v5/stdlib".
 	Driver string
 	// DSN is the connection string for the driver.
@@ -48,10 +48,14 @@ func Open(ctx context.Context, opts Options) (*DB, error) {
 	if dialect == nil {
 		return nil, fmt.Errorf("sql: unknown dialect for the driver %q; set Options.Dialect", opts.Driver)
 	}
-	std, err := stdsql.Open(opts.Driver, opts.DSN)
+	dsn := opts.DSN
+	if opts.Driver == "mysql" {
+		dsn = mysqlDSN(dsn)
+	}
+	std, err := stdsql.Open(opts.Driver, dsn)
 	if err != nil {
 		if strings.Contains(err.Error(), "unknown driver") {
-			return nil, fmt.Errorf("sql: the driver %q is not registered; import it, for example _ \"github.com/jackc/pgx/v5/stdlib\" for pgx or _ \"modernc.org/sqlite\" for sqlite: %w", opts.Driver, err)
+			return nil, fmt.Errorf("sql: the driver %q is not registered; import it, for example _ \"github.com/jackc/pgx/v5/stdlib\" for pgx, _ \"github.com/go-sql-driver/mysql\" for mysql or _ \"modernc.org/sqlite\" for sqlite: %w", opts.Driver, err)
 		}
 		return nil, fmt.Errorf("sql: opening the database: %w", err)
 	}

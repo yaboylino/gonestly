@@ -18,34 +18,12 @@ func rebind(d Dialect, query string, args []any) (string, []any, error) {
 
 	for i := 0; i < len(query); i++ {
 		c := query[i]
-		switch {
-		case c == '\'' || c == '"':
-			end := closingQuote(query, i)
+		if end, _ := skipLexeme(d, query, i); end > i {
 			b.WriteString(query[i:end])
 			i = end - 1
-		case c == '-' && i+1 < len(query) && query[i+1] == '-':
-			end := strings.IndexByte(query[i:], '\n')
-			if end < 0 {
-				end = len(query) - i
-			}
-			b.WriteString(query[i : i+end])
-			i += end - 1
-		case c == '/' && i+1 < len(query) && query[i+1] == '*':
-			end := strings.Index(query[i+2:], "*/")
-			if end < 0 {
-				b.WriteString(query[i:])
-				i = len(query)
-				continue
-			}
-			b.WriteString(query[i : i+end+4])
-			i += end + 3
-		case c == '$' && d == Postgres:
-			if end, ok := dollarQuoteEnd(query, i); ok {
-				b.WriteString(query[i:end])
-				i = end - 1
-				continue
-			}
-			b.WriteByte(c)
+			continue
+		}
+		switch {
 		case c == '?' && i+1 < len(query) && query[i+1] == '?':
 			b.WriteByte('?')
 			i++
@@ -97,10 +75,49 @@ func expand(arg any, position int) ([]any, error) {
 	return values, nil
 }
 
-func closingQuote(query string, start int) int {
+// skipLexeme returns the end of the quoted text or comment that starts at i, and whether it
+// is a comment. The end is i when neither starts there.
+func skipLexeme(d Dialect, s string, i int) (end int, comment bool) {
+	c := s[i]
+	next := byte(0)
+	if i+1 < len(s) {
+		next = s[i+1]
+	}
+	switch {
+	case c == '\'' || c == '"' || (c == '`' && d == MySQL):
+		return closingQuote(d, s, i), false
+	case c == '$' && d == Postgres:
+		if end, ok := dollarQuoteEnd(s, i); ok {
+			return end, false
+		}
+	case c == '/' && next == '*':
+		if end := strings.Index(s[i+2:], "*/"); end >= 0 {
+			return i + end + 4, true
+		}
+		return len(s), true
+	case c == '#' && d == MySQL, c == '-' && next == '-' && (d != MySQL || lineCommentStart(s, i)):
+		if end := strings.IndexByte(s[i:], '\n'); end >= 0 {
+			return i + end, true
+		}
+		return len(s), true
+	}
+	return i, false
+}
+
+// lineCommentStart reports whether the -- at i starts a comment in MySQL, which needs white
+// space after it; otherwise 5--3 would lose its second operand.
+func lineCommentStart(s string, i int) bool {
+	return i+2 >= len(s) || s[i+2] <= ' '
+}
+
+// closingQuote returns the index after the quote that closes the one at start.
+func closingQuote(d Dialect, query string, start int) int {
 	quote := query[start]
 	for i := start + 1; i < len(query); i++ {
-		if query[i] == quote {
+		switch {
+		case query[i] == '\\' && d == MySQL && quote != '`':
+			i++
+		case query[i] == quote:
 			if i+1 < len(query) && query[i+1] == quote {
 				i++
 				continue
@@ -133,47 +150,97 @@ func dollarQuoteEnd(query string, start int) (int, bool) {
 	return start + len(tag) + end + len(tag), true
 }
 
-// splitStatements splits a script at the semicolons outside quoted text, comments and dollar
-// quoted strings, and drops what holds no SQL.
+// splitStatements splits a script at the semicolons outside quoted text, comments and the
+// bodies of routines and triggers, and drops what holds no SQL.
 func splitStatements(d Dialect, script string) []string {
 	var statements []string
 	start, hasSQL := 0, false
+	var blocks blockTracker
 	flush := func(end int) {
 		if statement := strings.TrimSpace(script[start:end]); statement != "" && hasSQL {
 			statements = append(statements, statement)
 		}
-		start, hasSQL = end+1, false
+		start, hasSQL, blocks = end+1, false, blockTracker{}
 	}
 	for i := 0; i < len(script); i++ {
 		c := script[i]
+		if end, comment := skipLexeme(d, script, i); end > i {
+			// A comment such as /*!40101 ... */ or /*+ ... */ is an instruction to the database.
+			if !comment || strings.HasPrefix(script[i:end], "/*!") || strings.HasPrefix(script[i:end], "/*+") {
+				hasSQL = true
+				blocks.previous = ""
+			}
+			i = end - 1
+			continue
+		}
 		switch {
-		case c == '\'' || c == '"':
-			i = closingQuote(script, i) - 1
+		case isWordByte(c) && (c < '0' || c > '9'):
+			end := i + 1
+			for end < len(script) && isWordByte(script[end]) {
+				end++
+			}
+			blocks.word(d, strings.ToUpper(script[i:end]))
 			hasSQL = true
-		case c == '-' && i+1 < len(script) && script[i+1] == '-':
-			end := strings.IndexByte(script[i:], '\n')
-			if end < 0 {
-				end = len(script) - i
-			}
-			i += end - 1
-		case c == '/' && i+1 < len(script) && script[i+1] == '*':
-			end := strings.Index(script[i+2:], "*/")
-			if end < 0 {
-				i = len(script)
-				continue
-			}
-			i += end + 3
-		case c == '$' && d == Postgres:
-			if end, ok := dollarQuoteEnd(script, i); ok {
-				i = end - 1
-			}
-			hasSQL = true
-		case c == ';':
+			i = end - 1
+		case c == ';' && blocks.depth == 0:
 			flush(i)
 		case c != ' ' && c != '\t' && c != '\n' && c != '\r':
 			hasSQL = true
+			blocks.previous = ""
 		}
 	}
 	flush(len(script))
 	return statements
+}
+
+func isWordByte(c byte) bool {
+	return c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c >= 0x80
+}
+
+// blockTracker follows the BEGIN ... END bodies of one statement, whose semicolons do not end
+// it: BEGIN ATOMIC in PostgreSQL, and the routines, triggers and events of MySQL.
+type blockTracker struct {
+	depth    int
+	first    string
+	previous string
+	routine  bool
+}
+
+func (t *blockTracker) word(d Dialect, word string) {
+	previous := t.previous
+	t.previous = word
+	if t.first == "" {
+		t.first = word
+	}
+	switch d {
+	case Postgres:
+		switch {
+		case t.depth == 0 && word == "ATOMIC" && previous == "BEGIN":
+			t.depth = 1
+		case t.depth > 0 && word == "CASE":
+			t.depth++
+		case t.depth > 0 && word == "END":
+			t.depth--
+		}
+	case MySQL:
+		switch {
+		case previous == "END" && (word == "IF" || word == "LOOP" || word == "WHILE" || word == "REPEAT"):
+			// END IF and its kind close a construct that was never counted as a block.
+			t.depth++
+		case previous == "END" && word == "CASE":
+		case t.depth == 0 && (t.first == "CREATE" || t.first == "ALTER"):
+			switch word {
+			case "PROCEDURE", "FUNCTION", "TRIGGER", "EVENT":
+				t.routine = true
+			case "BEGIN":
+				if t.routine {
+					t.depth = 1
+				}
+			}
+		case t.depth > 0 && (word == "BEGIN" || word == "CASE"):
+			t.depth++
+		case t.depth > 0 && word == "END":
+			t.depth--
+		}
+	}
 }

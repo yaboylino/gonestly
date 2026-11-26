@@ -45,7 +45,8 @@ type MigrationStatus struct {
 //
 // A file with the comment line "-- gonestly:no-transaction" runs outside a transaction, one
 // statement at a time, for statements such as CREATE INDEX CONCURRENTLY in PostgreSQL. When
-// such a migration fails halfway, the statements before the failure stay applied.
+// such a migration fails halfway, the statements before the failure stay applied. The same
+// holds for every migration in MySQL, which commits each schema change on its own.
 type Migrator struct {
 	db         *DB
 	migrations []Migration
@@ -132,7 +133,7 @@ func (m *Migrator) Up(ctx context.Context) ([]Migration, error) {
 			return err
 		}
 		for _, migration := range pending {
-			err := m.run(ctx, migration.up, func(ctx context.Context) error {
+			ran, err := m.run(ctx, migration, migration.up, false, func(ctx context.Context) error {
 				_, err := m.db.Exec(ctx, "INSERT INTO "+migrationsTable+" (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)",
 					migration.Version, migration.Name, checksum(migration.up), time.Now().UTC())
 				return err
@@ -140,7 +141,9 @@ func (m *Migrator) Up(ctx context.Context) ([]Migration, error) {
 			if err != nil {
 				return fmt.Errorf("sql: applying migration %d_%s: %w", migration.Version, migration.Name, err)
 			}
-			applied = append(applied, migration)
+			if ran {
+				applied = append(applied, migration)
+			}
 		}
 		return nil
 	})
@@ -161,14 +164,16 @@ func (m *Migrator) Down(ctx context.Context) (*Migration, error) {
 			if strings.TrimSpace(migration.down) == "" {
 				return fmt.Errorf("sql: migration %d_%s has no down file", migration.Version, migration.Name)
 			}
-			err := m.run(ctx, migration.down, func(ctx context.Context) error {
+			ran, err := m.run(ctx, migration, migration.down, true, func(ctx context.Context) error {
 				_, err := m.db.Exec(ctx, "DELETE FROM "+migrationsTable+" WHERE version = ?", migration.Version)
 				return err
 			})
 			if err != nil {
 				return fmt.Errorf("sql: reverting migration %d_%s: %w", migration.Version, migration.Name, err)
 			}
-			reverted = &migration
+			if ran {
+				reverted = &migration
+			}
 			return nil
 		}
 		return nil
@@ -177,22 +182,32 @@ func (m *Migrator) Down(ctx context.Context) (*Migration, error) {
 }
 
 // run executes a migration script and records it: together in one transaction, or statement
-// by statement when the script asks to run outside one.
-func (m *Migrator) run(ctx context.Context, script string, record func(ctx context.Context) error) error {
-	if !noTransaction.MatchString(script) {
-		return m.db.Transaction(ctx, func(ctx context.Context) error {
-			if _, err := m.db.conn(ctx).ExecContext(ctx, script); err != nil {
+// by statement when the script asks to run outside one. It reports whether the script ran; it
+// does not when another process applied or reverted the migration in the meantime.
+func (m *Migrator) run(ctx context.Context, migration Migration, script string, applied bool, record func(ctx context.Context) error) (ran bool, err error) {
+	transaction := !noTransaction.MatchString(script)
+	apply := func(ctx context.Context) error {
+		if guard := m.db.dialect.migrationGuard(); guard != "" {
+			if _, err := m.db.Exec(ctx, guard); err != nil {
 				return err
 			}
-			return record(ctx)
-		})
-	}
-	for _, statement := range m.db.dialect.statements(script) {
-		if _, err := m.db.conn(ctx).ExecContext(ctx, statement); err != nil {
-			return err
+			n, err := QueryOne[int64](ctx, m.db, "SELECT COUNT(*) FROM "+migrationsTable+" WHERE version = ?", migration.Version)
+			if err != nil || (n > 0) != applied {
+				return err
+			}
 		}
+		ran = true
+		for _, statement := range m.db.dialect.statements(script, transaction) {
+			if _, err := m.db.conn(ctx).ExecContext(ctx, statement); err != nil {
+				return err
+			}
+		}
+		return record(ctx)
 	}
-	return record(ctx)
+	if transaction {
+		return ran, m.db.Transaction(ctx, apply)
+	}
+	return ran, apply(ctx)
 }
 
 // Status lists every migration and whether it has been applied.
@@ -239,7 +254,7 @@ func (m *Migrator) locked(ctx context.Context, fn func(ctx context.Context, done
 
 func (m *Migrator) ensureTable(ctx context.Context) error {
 	_, err := m.db.Exec(ctx, "CREATE TABLE IF NOT EXISTS "+migrationsTable+
-		" (version BIGINT PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, applied_at TIMESTAMP NOT NULL)")
+		" (version BIGINT PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, applied_at "+m.db.dialect.timestamp()+" NOT NULL)")
 	if err != nil {
 		return fmt.Errorf("sql: creating the %s table: %w", migrationsTable, err)
 	}

@@ -1,6 +1,8 @@
 package sql
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -25,6 +27,8 @@ func TestRebind(t *testing.T) {
 		{Postgres, "WHERE price > $1x AND a = ?", []any{1}, "WHERE price > $1x AND a = $1", []any{1}},
 		{Postgres, "SELECT 1 /* unterminated", nil, "SELECT 1 /* unterminated", []any{}},
 		{Postgres, "SELECT 1 -- comment", nil, "SELECT 1 -- comment", []any{}},
+		{MySQL, "SELECT `a?`, 'it\\'s ?', \"q\\\"?\" FROM t WHERE a = ? # why?\nAND b IN (?)", []any{1, []int{2, 3}}, "SELECT `a?`, 'it\\'s ?', \"q\\\"?\" FROM t WHERE a = ? # why?\nAND b IN (?, ?)", []any{1, 2, 3}},
+		{MySQL, "SELECT 5--? -- what?\n", []any{3}, "SELECT 5--? -- what?\n", []any{3}},
 	}
 	for _, tt := range tests {
 		got, args, err := rebind(tt.dialect, tt.query, tt.args)
@@ -59,6 +63,9 @@ func TestNames(t *testing.T) {
 	}
 	if quoteIdentifier(`users.we"ird`) != `"users"."we""ird"` {
 		t.Error(quoteIdentifier(`users.we"ird`))
+	}
+	if got := MySQL.Quote("users.we`ird"); got != "`users`.`we``ird`" {
+		t.Error(got)
 	}
 }
 
@@ -95,5 +102,70 @@ CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END; $body$ LANGUAGE p
 	}
 	if got := splitStatements(Postgres, script); !reflect.DeepEqual(got, want) {
 		t.Errorf("statements = %q\nwant %q", got, want)
+	}
+}
+
+func TestSplitRoutineBodies(t *testing.T) {
+	postgres := `CREATE FUNCTION add(a int, b int) RETURNS int LANGUAGE SQL
+BEGIN ATOMIC
+  SELECT CASE WHEN a > 0 THEN a ELSE 0 END;
+  SELECT a + b;
+END;
+BEGIN;
+SELECT 1;`
+	if got := splitStatements(Postgres, postgres); len(got) != 3 || !strings.HasSuffix(got[0], "SELECT a + b;\nEND") || got[1] != "BEGIN" {
+		t.Errorf("postgres statements = %q", got)
+	}
+
+	mysql := "CREATE TABLE `a;b` (begin INT, note VARCHAR(9) DEFAULT 'x\\';'); # one; comment\n" + `/*!40101 SET NAMES utf8mb4 */;
+CREATE TRIGGER audit BEFORE UPDATE ON t FOR EACH ROW
+BEGIN
+  IF NEW.a <> OLD.a THEN
+    SET NEW.b = CASE WHEN NEW.a > 0 THEN IF(NEW.a > 5, 2, 1) ELSE 0 END;
+  END IF;
+  WHILE NEW.c < 3 DO SET NEW.c = NEW.c + 1; END WHILE;
+  CASE NEW.d WHEN 1 THEN SET NEW.e = 1; ELSE BEGIN SET NEW.e = 2; END; END CASE;
+END;
+BEGIN;
+INSERT INTO t VALUES (1);
+COMMIT;`
+	got := splitStatements(MySQL, mysql)
+	if len(got) != 6 || !strings.HasPrefix(got[1], "# one; comment\n/*!40101") || !strings.HasSuffix(got[2], "END CASE;\nEND") || got[3] != "BEGIN" || got[5] != "COMMIT" {
+		t.Errorf("mysql statements = %d %q", len(got), got)
+	}
+}
+
+func TestMySQLConnectionString(t *testing.T) {
+	for dsn, want := range map[string]string{
+		"root:pw@tcp(db:3306)/shop":                 "root:pw@tcp(db:3306)/shop?parseTime=true",
+		"root:p/w?@tcp(db:3306)/shop?charset=utf8":  "root:p/w?@tcp(db:3306)/shop?charset=utf8&parseTime=true",
+		"root:pw@tcp(db:3306)/shop?parseTime=false": "root:pw@tcp(db:3306)/shop?parseTime=false",
+		"not a connection string":                   "not a connection string",
+	} {
+		if got := mysqlDSN(dsn); got != want {
+			t.Errorf("mysqlDSN(%q) = %q, want %q", dsn, got, want)
+		}
+	}
+}
+
+type numberedError struct{ Number uint16 }
+
+func (numberedError) Error() string { return "Error 1062 (23000): Duplicate entry" }
+
+func TestMySQLUniqueViolation(t *testing.T) {
+	for _, err := range []error{
+		numberedError{Number: 1062},
+		fmt.Errorf("wrapped: %w", &numberedError{Number: 1586}),
+		errors.Join(errors.New("other"), numberedError{Number: 1062}),
+		errors.New("Error 1062 (23000): Duplicate entry 'a' for key 'b'"),
+	} {
+		if !MySQL.isUniqueViolation(err) {
+			t.Errorf("%v is not seen as a unique violation", err)
+		}
+	}
+	for _, err := range []error{numberedError{Number: 1048}, errors.New("Error 1048 (23000): Column cannot be null")} {
+		if MySQL.isUniqueViolation(err) {
+			t.Errorf("%v is seen as a unique violation", err)
+		}
 	}
 }

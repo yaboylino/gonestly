@@ -209,9 +209,8 @@ func (q *Builder[T]) selectSQL() (*sqlBuilder, error) {
 		b.write(" LIMIT ", strconv.Itoa(q.limit))
 	}
 	if q.offset > 0 {
-		if q.limit == 0 && q.db.dialect == SQLite {
-			// SQLite only accepts OFFSET after a LIMIT; -1 means no limit.
-			b.write(" LIMIT -1")
+		if noLimit := q.db.dialect.noLimit(); q.limit == 0 && noLimit != "" {
+			b.write(" LIMIT ", noLimit)
 		}
 		b.write(" OFFSET ", strconv.Itoa(q.offset))
 	}

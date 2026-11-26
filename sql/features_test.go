@@ -19,7 +19,7 @@ type Account struct {
 
 func createAccounts(t *testing.T, db *sql.DB) {
 	t.Helper()
-	exec(t, db, "CREATE TABLE accounts (id "+autoID(db)+", email TEXT NOT NULL UNIQUE)", "INSERT INTO accounts (email) VALUES ('ada@example.com')")
+	exec(t, db, "CREATE TABLE accounts (id "+autoID(db)+", email VARCHAR(255) NOT NULL UNIQUE)", "INSERT INTO accounts (email) VALUES ('ada@example.com')")
 }
 
 func TestUniqueViolationIsConflict(t *testing.T) {
@@ -90,12 +90,14 @@ func TestTransactionOptions(t *testing.T) {
 			}
 		}
 
-		if db.Dialect() != sql.Postgres {
+		show := map[sql.Dialect]string{sql.Postgres: "SHOW transaction_isolation", sql.MySQL: "SELECT isolation_level FROM performance_schema.events_transactions_current WHERE thread_id = PS_CURRENT_THREAD_ID()"}[db.Dialect()]
+		// MariaDB has no way to ask for the isolation level of the running transaction.
+		if version, _ := sql.QueryOne[string](ctx, db, "SELECT VERSION()"); show == "" || strings.Contains(version, "MariaDB") {
 			return
 		}
 		err = db.Transaction(ctx, func(ctx context.Context) error {
-			level, err := sql.QueryOne[string](ctx, db, "SHOW transaction_isolation")
-			if err == nil && level != "serializable" {
+			level, err := sql.QueryOne[string](ctx, db, show)
+			if err == nil && strings.ToLower(level) != "serializable" {
 				t.Errorf("isolation = %s", level)
 			}
 			return err
@@ -114,10 +116,14 @@ func TestMigrationWithoutTransaction(t *testing.T) {
 			// PostgreSQL refuses this statement inside a transaction.
 			index = "CREATE INDEX CONCURRENTLY accounts_email ON accounts (email);"
 		}
+		dropIndex := "DROP INDEX accounts_email;"
+		if db.Dialect() == sql.MySQL {
+			dropIndex = "DROP INDEX accounts_email ON accounts;"
+		}
 		files := fstest.MapFS{
-			"0001_create_accounts.up.sql":  {Data: []byte("CREATE TABLE accounts (id BIGINT PRIMARY KEY, email TEXT NOT NULL);")},
+			"0001_create_accounts.up.sql":  {Data: []byte("CREATE TABLE accounts (id BIGINT PRIMARY KEY, email VARCHAR(255) NOT NULL);")},
 			"0002_index_accounts.up.sql":   {Data: []byte("-- gonestly:no-transaction\n" + index + "\nINSERT INTO accounts (id, email) VALUES (1, 'semi;colon');\n")},
-			"0002_index_accounts.down.sql": {Data: []byte("-- gonestly:no-transaction\nDELETE FROM accounts;\nDROP INDEX accounts_email;\n")},
+			"0002_index_accounts.down.sql": {Data: []byte("-- gonestly:no-transaction\nDELETE FROM accounts;\n" + dropIndex + "\n")},
 			"0003_broken.up.sql":           {Data: []byte("-- gonestly:no-transaction\nINSERT INTO accounts (id, email) VALUES (2, 'kept');\nINSERT INTO nowhere VALUES (1);\n")},
 		}
 		migrator, err := sql.NewMigrator(db, files)

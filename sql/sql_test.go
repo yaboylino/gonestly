@@ -178,7 +178,7 @@ type Team struct {
 func TestRepository(t *testing.T) {
 	eachDatabase(t, func(t *testing.T, db *sql.DB) {
 		createUsers(t, db)
-		exec(t, db, "CREATE TABLE teams (code TEXT PRIMARY KEY, name TEXT NOT NULL)")
+		exec(t, db, "CREATE TABLE teams (code VARCHAR(64) PRIMARY KEY, name TEXT NOT NULL)")
 		ctx := t.Context()
 		repo, err := sql.NewRepository[User, int64](db)
 		if err != nil {
@@ -408,7 +408,7 @@ func TestTransactions(t *testing.T) {
 }
 
 var migrations = fstest.MapFS{
-	"0001_create_teams.up.sql":   {Data: []byte("CREATE TABLE teams (code TEXT PRIMARY KEY, name TEXT NOT NULL);\nINSERT INTO teams (code, name) VALUES ('core', 'Core');")},
+	"0001_create_teams.up.sql":   {Data: []byte("CREATE TABLE teams (code VARCHAR(64) PRIMARY KEY, name TEXT NOT NULL);\nINSERT INTO teams (code, name) VALUES ('core', 'Core');")},
 	"0001_create_teams.down.sql": {Data: []byte("DROP TABLE teams;")},
 	"0002_add_team_size.up.sql":  {Data: []byte("ALTER TABLE teams ADD COLUMN size INTEGER NOT NULL DEFAULT 0;")},
 	"README.md":                  {Data: []byte("ignored")},
