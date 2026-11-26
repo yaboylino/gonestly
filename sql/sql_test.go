@@ -602,3 +602,62 @@ func TestModule(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestForeignKeysOffRebuildsATableWithoutCascades(t *testing.T) {
+	db := openSQLite(t)
+	exec(t, db,
+		"CREATE TABLE parents (id INTEGER PRIMARY KEY, name TEXT NOT NULL)",
+		"CREATE TABLE kids (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parents (id) ON DELETE CASCADE)",
+		"INSERT INTO parents (id, name) VALUES (1, 'a'), (2, 'b')",
+		"INSERT INTO kids (parent_id) VALUES (1), (1), (2)",
+	)
+	rebuild := "CREATE TABLE parents__new (id INTEGER PRIMARY KEY, name TEXT);\nINSERT INTO parents__new (id, name) SELECT id, name FROM parents;\nDROP TABLE parents;\nALTER TABLE parents__new RENAME TO parents;\n"
+	migrate := func(script string) error {
+		dir := fstest.MapFS{"0001_rebuild.up.sql": {Data: []byte(script)}}
+		migrator, err := sql.NewMigrator(db, dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = migrator.Up(t.Context())
+		return err
+	}
+	if err := migrate("-- gonestly:foreign-keys-off\n" + rebuild); err != nil {
+		t.Fatal(err)
+	}
+	n, err := sql.QueryOne[int64](t.Context(), db, "SELECT COUNT(*) FROM kids")
+	if err != nil || n != 3 {
+		t.Fatalf("%d kids after the rebuild, %v; want 3", n, err)
+	}
+	// The setting is back, and the cascade still works.
+	exec(t, db, "DELETE FROM parents WHERE id = 1")
+	if n, _ := sql.QueryOne[int64](t.Context(), db, "SELECT COUNT(*) FROM kids"); n != 1 {
+		t.Errorf("%d kids after deleting a parent, want 1: the foreign keys are off or the key was lost", n)
+	}
+	if on, _ := sql.QueryOne[int64](t.Context(), db, "PRAGMA foreign_keys"); on != 1 {
+		t.Errorf("foreign_keys = %d after the migration", on)
+	}
+}
+
+func TestForeignKeysOffFailsOnViolationsAndRollsBack(t *testing.T) {
+	db := openSQLite(t)
+	exec(t, db,
+		"CREATE TABLE parents (id INTEGER PRIMARY KEY)",
+		"CREATE TABLE kids (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parents (id))",
+		"INSERT INTO parents (id) VALUES (1)",
+		"INSERT INTO kids (parent_id) VALUES (1)",
+	)
+	script := "-- gonestly:foreign-keys-off\nDELETE FROM parents;\n"
+	migrator, err := sql.NewMigrator(db, fstest.MapFS{"0001_break.up.sql": {Data: []byte(script)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := migrator.Up(t.Context()); err == nil || !strings.Contains(err.Error(), "violate a foreign key") {
+		t.Fatalf("err = %v", err)
+	}
+	if n, _ := sql.QueryOne[int64](t.Context(), db, "SELECT COUNT(*) FROM parents"); n != 1 {
+		t.Errorf("the migration was not rolled back: %d parents", n)
+	}
+	if on, _ := sql.QueryOne[int64](t.Context(), db, "PRAGMA foreign_keys"); on != 1 {
+		t.Errorf("foreign_keys = %d after a failed migration", on)
+	}
+}

@@ -6,6 +6,28 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Added
+
+- Schema from your models: `gonestly migrate dev` compares the structs with `db` tags with the
+  schema that the migrations made, writes the migration and its undo for PostgreSQL, MySQL or
+  SQLite, and applies it. A `schema` tag sets size, type, default, indexes, unique keys and
+  `onDelete`; relations become foreign keys. Renames are asked about, and can be given with
+  `--rename`; changes that delete data need `--accept-data-loss` or a yes. `gonestly migrate diff`
+  shows the SQL, and `gonestly migrate baseline` adopts a project whose migrations were written by
+  hand. The schema is remembered in `migrations/schema.snapshot.json`.
+- The comment line `-- gonestly:foreign-keys-off` in a migration, which runs it in a transaction with
+  the foreign keys of SQLite switched off and checks them at the end. SQLite needs it to make a
+  table again without cascades deleting rows in the tables that point at it.
+- `sql.DefaultTableName`, the table that a model gets without a `TableName` method.
+- `Prompter.Confirm` and `Printer.Warning` in the CLI.
+
+### Changed
+
+- `gonestly generate resource` writes the migration of the new table from its model, in the same
+  way as `gonestly migrate dev`, so the table follows the model afterwards. On SQLite the key is
+  now `AUTOINCREMENT` and strings are `TEXT`; on PostgreSQL a string is `VARCHAR(255)` instead of
+  `TEXT`. Existing tables are not touched.
+
 ## [0.4.1] - 2026-11-26
 
 ### Fixed

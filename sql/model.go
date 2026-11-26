@@ -178,6 +178,12 @@ func tableName(t reflect.Type) (name string) {
 	return plural(snakeCase(t.Name()))
 }
 
+// DefaultTableName returns the table that a model with this type name uses unless it has a
+// TableName method: the plural of the name in snake case, so Product is products.
+func DefaultTableName(typeName string) string {
+	return plural(snakeCase(typeName))
+}
+
 // plural handles regular English nouns; implement TableNamer for the others.
 func plural(name string) string {
 	switch {

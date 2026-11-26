@@ -18,7 +18,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/project"
-	"github.com/yaboylino/gonestly/cmd/gonestly/internal/scaffold"
+	"github.com/yaboylino/gonestly/cmd/gonestly/internal/schema"
 	"github.com/yaboylino/gonestly/cmd/gonestly/internal/term"
 	"github.com/yaboylino/gonestly/config"
 	"github.com/yaboylino/gonestly/sql"
@@ -45,6 +45,9 @@ DATABASE_URL in the environment or the .env file, unless --dsn is given.`,
 	cmd.PersistentFlags().StringVar(&opts.dir, "dir", "migrations", "the migrations directory")
 
 	cmd.AddCommand(
+		migrateDevCommand(printer, &opts),
+		diffCommand(printer, &opts),
+		baselineCommand(printer),
 		&cobra.Command{
 			Use:   "up",
 			Short: "Apply every pending migration",
@@ -177,7 +180,7 @@ func createMigration(dir, name string, now time.Time, printer *term.Printer, p *
 	if !migrationName.MatchString(name) {
 		return fmt.Errorf("%q is not a valid migration name; use lower case letters, digits and underscores", name)
 	}
-	version, err := scaffold.NextMigrationVersion(dir, now)
+	version, err := schema.NextVersion(dir, now)
 	if err != nil {
 		return err
 	}

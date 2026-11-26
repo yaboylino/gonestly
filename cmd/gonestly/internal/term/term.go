@@ -41,6 +41,11 @@ func (p *Printer) Failure(format string, args ...any) {
 	fmt.Fprintf(p.out, "%s %s\n", p.paint("31", "✗"), fmt.Sprintf(format, args...))
 }
 
+// Warning prints a line about something that needs attention.
+func (p *Printer) Warning(format string, args ...any) {
+	fmt.Fprintf(p.out, "%s %s\n", p.paint("33", "!"), fmt.Sprintf(format, args...))
+}
+
 // Info prints a neutral status line.
 func (p *Printer) Info(format string, args ...any) {
 	fmt.Fprintf(p.out, "%s %s\n", p.paint("36", "•"), fmt.Sprintf(format, args...))

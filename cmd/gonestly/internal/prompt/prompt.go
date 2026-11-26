@@ -118,3 +118,26 @@ func (p *Prompter) Choose(label string, options []string, def string) (string, e
 		_, _ = fmt.Fprintf(p.out, "%q is not one of the options\n", answer)
 	}
 }
+
+// Confirm asks a yes or no question; an empty answer is def.
+func (p *Prompter) Confirm(label string, def bool) (bool, error) {
+	hint := "y/N"
+	if def {
+		hint = "Y/n"
+	}
+	for {
+		answer, err := p.Ask(label+" ("+hint+")", "")
+		if err != nil {
+			return false, err
+		}
+		switch strings.ToLower(strings.TrimSpace(answer)) {
+		case "":
+			return def, nil
+		case "y", "yes", "j", "ja":
+			return true, nil
+		case "n", "no", "nee":
+			return false, nil
+		}
+		_, _ = fmt.Fprintln(p.out, "Answer y or n.")
+	}
+}
