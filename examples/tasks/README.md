@@ -29,6 +29,7 @@ application on every change, and `gonestly routes` lists the routes.
 | Where                       | What                                                                                         |
 | --------------------------- | -------------------------------------------------------------------------------------------- |
 | `internal/app`              | The root module: configuration, validation, the database and the feature modules.            |
+| `internal/health`           | Liveness and readiness routes; the readiness check includes the database.                    |
 | `internal/auth`             | A module with its own configuration that exports a guard, described in the OpenAPI document. |
 | `internal/projects`         | A repository, a typed query, a 409 for a slug that is taken, and an exported service.        |
 | `internal/tasks`            | A module that imports another one, optional filters, and transactions across both modules.   |

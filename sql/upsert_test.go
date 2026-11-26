@@ -34,7 +34,7 @@ func TestCreateAll(t *testing.T) {
 		repo := createMembers(t, db)
 
 		// More rows than fit in one statement, with a row in the middle that sets its own key
-		// and visits, which leaves other columns to the database than its neighbours.
+		// and visits, which leaves other columns to the database than its neighbors.
 		members := make([]Member, 9000)
 		for i := range members {
 			members[i] = Member{Email: fmt.Sprintf("member-%d@example.com", i), Name: "Member"}

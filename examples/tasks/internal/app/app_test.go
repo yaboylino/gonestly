@@ -7,6 +7,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/yaboylino/gonestly"
 	"github.com/yaboylino/gonestly/gonestlytest"
 
 	"github.com/yaboylino/gonestly/examples/tasks/internal/app"
@@ -75,6 +76,16 @@ func TestProjectWithTasks(t *testing.T) {
 	api.Get("/tasks").ExpectStatus(http.StatusOK).JSON(&all)
 	if all.Total != 1 {
 		t.Errorf("tasks = %+v", all)
+	}
+}
+
+// The readiness check includes the database, because *sql.DB checks its own health.
+func TestReadiness(t *testing.T) {
+	api := start(t)
+	var report gonestly.HealthReport
+	api.Get("/health/ready").ExpectStatus(http.StatusOK).JSON(&report)
+	if !report.OK() || report.Checks["sql.DB"] != "ok" {
+		t.Errorf("report = %+v", report)
 	}
 }
 

@@ -22,8 +22,18 @@ All notable changes to this project are documented in this file. The format is b
   require a role.
 - `Repository.CreateAll`, `Upsert` and `UpsertAll`: many rows in few statements, and rows that
   are inserted or updated by their primary key or by unique columns.
+- `Health`, which every module can inject to report whether the application can handle
+  requests. It asks every provider that implements `HealthChecker`, such as `*sql.DB`, and
+  reports that the application is unavailable while it stops. New projects serve
+  `/health/live` and `/health/ready`.
+- `WithShutdownDelay`, which keeps the server answering for a while after a stop signal, so
+  that traffic can move elsewhere first.
 - `examples/tasks`, a complete application with two feature modules, a guard, transactions
   across modules and tests.
+
+### Changed
+
+- New projects serve `/health/live` and `/health/ready` instead of `/health`.
 
 ## [0.1.0] - 2026-11-26
 

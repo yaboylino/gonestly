@@ -13,6 +13,7 @@ type Option func(*options)
 type options struct {
 	logger          *slog.Logger
 	shutdownTimeout time.Duration
+	shutdownDelay   time.Duration
 	overrides       []Provider
 	listen          bool
 }
@@ -32,6 +33,17 @@ func WithShutdownTimeout(timeout time.Duration) Option {
 	return func(o *options) {
 		if timeout > 0 {
 			o.shutdownTimeout = timeout
+		}
+	}
+}
+
+// WithShutdownDelay makes App.Run wait before it stops the application. During the delay the
+// server still answers, but Health reports that it is unavailable, which gives a load balancer
+// or an orchestrator the time to send its traffic elsewhere. It defaults to no delay.
+func WithShutdownDelay(delay time.Duration) Option {
+	return func(o *options) {
+		if delay > 0 {
+			o.shutdownDelay = delay
 		}
 	}
 }

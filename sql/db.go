@@ -92,6 +92,9 @@ func (db *DB) Dialect() Dialect { return db.dialect }
 // Close closes the connection pool.
 func (db *DB) Close() error { return db.std.Close() }
 
+// CheckHealth reports whether the database can be reached, for gonestly.Health.
+func (db *DB) CheckHealth(ctx context.Context) error { return db.std.PingContext(ctx) }
+
 // OnStop closes the connection pool when the application stops.
 func (db *DB) OnStop(context.Context) error { return db.Close() }
 

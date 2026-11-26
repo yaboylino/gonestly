@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -42,8 +43,11 @@ type App struct {
 	container       *container
 	logger          *slog.Logger
 	shutdownTimeout time.Duration
+	shutdownDelay   time.Duration
 
 	listen bool
+	// stopping is set as soon as the application is asked to stop, before the server closes.
+	stopping atomic.Bool
 
 	// lifecycle serializes Start and Stop; mu guards the fields below, so that hooks and
 	// running requests can still use Resolve and the accessors while the app starts or stops.
@@ -65,12 +69,12 @@ func New(root *Module, opts ...Option) (*App, error) {
 		opt(&o)
 	}
 
-	app := &App{logger: o.logger, shutdownTimeout: o.shutdownTimeout, listen: o.listen, done: make(chan struct{})}
+	app := &App{logger: o.logger, shutdownTimeout: o.shutdownTimeout, shutdownDelay: o.shutdownDelay, listen: o.listen, done: make(chan struct{})}
 	core := &Module{
 		Name:      coreModuleName,
 		Global:    true,
-		Providers: Providers(Value(o.logger), Value[Shutdowner](app)),
-		Exports:   Exports(Type[*slog.Logger](), Type[Shutdowner]()),
+		Providers: Providers(Value(o.logger), Value[Shutdowner](app), Value[Health](appHealth{app: app})),
+		Exports:   Exports(Type[*slog.Logger](), Type[Shutdowner](), Type[Health]()),
 	}
 	c, err := buildContainer(root, core, o.overrides)
 	if err != nil {
@@ -132,6 +136,7 @@ func (a *App) Stop(ctx context.Context) error {
 	if state != stateStarted {
 		return nil
 	}
+	a.stopping.Store(true)
 	var serverErr error
 	if server != nil {
 		serverErr = server.shutdown(ctx)
@@ -284,6 +289,13 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	// Restore the default signal handling, so a second interrupt terminates the process at once.
 	stop()
+	// From here Health reports that the application is unavailable, so that whoever sends it
+	// traffic can stop doing so before the server closes.
+	a.stopping.Store(true)
+	if a.shutdownDelay > 0 {
+		a.logger.InfoContext(ctx, "application stopping", slog.Duration("delay", a.shutdownDelay))
+		time.Sleep(a.shutdownDelay)
+	}
 
 	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.shutdownTimeout)
 	defer cancel()

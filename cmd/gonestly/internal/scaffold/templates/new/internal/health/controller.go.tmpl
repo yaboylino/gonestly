@@ -2,29 +2,46 @@ package health
 
 import (
 	"context"
+	"time"
 
 	"github.com/yaboylino/gonestly"
 )
 
-// Status reports whether the application is running.
+// checkTimeout is how long the checks of a readiness request may take together.
+const checkTimeout = 5 * time.Second
+
+// Status reports that the application is running.
 type Status struct {
 	Status string `json:"status" example:"ok"`
 }
 
-// Controller serves the health check.
-type Controller struct{}
+// Controller serves the health checks.
+type Controller struct {
+	health gonestly.Health
+}
 
 // NewController returns the health controller.
-func NewController() *Controller {
-	return &Controller{}
+func NewController(health gonestly.Health) *Controller {
+	return &Controller{health: health}
 }
 
-// Routes registers the health check.
+// Routes registers the health checks.
 func (c *Controller) Routes(r *gonestly.Router) {
-	gonestly.Get(r, "/health", c.Check, gonestly.Summary("Check that the application is running"))
+	r.Prefix("/health")
+	gonestly.Get(r, "/live", c.Live, gonestly.Summary("Check that the application is running"))
+	gonestly.Get(r, "/ready", c.Ready, gonestly.Summary("Check that the application can handle requests"))
 }
 
-// Check answers when the application is running.
-func (c *Controller) Check(context.Context, gonestly.Empty) (Status, error) {
+// Live answers as long as the application runs; restart it when this fails.
+func (c *Controller) Live(context.Context, gonestly.Empty) (Status, error) {
 	return Status{Status: "ok"}, nil
+}
+
+// Ready answers 503 when something the application needs, such as the database, cannot be
+// reached, or when the application is stopping; send it no traffic until this succeeds.
+func (c *Controller) Ready(ctx context.Context, _ gonestly.Empty) (gonestly.HealthReport, error) {
+	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	report := c.health.Report(ctx)
+	return report, report.Err()
 }

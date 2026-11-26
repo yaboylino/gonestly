@@ -4,17 +4,24 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/yaboylino/gonestly"
 	"github.com/yaboylino/gonestly/gonestlytest"
 
 	"{{.Module}}/internal/health"
 )
 
-func TestCheck(t *testing.T) {
+func TestHealth(t *testing.T) {
 	app := gonestlytest.Start(t, health.Module)
 
 	var status health.Status
-	app.Get("/health").ExpectStatus(http.StatusOK).JSON(&status)
+	app.Get("/health/live").ExpectStatus(http.StatusOK).JSON(&status)
 	if status.Status != "ok" {
 		t.Errorf("status = %q, want ok", status.Status)
+	}
+
+	var report gonestly.HealthReport
+	app.Get("/health/ready").ExpectStatus(http.StatusOK).JSON(&report)
+	if !report.OK() {
+		t.Errorf("report = %+v", report)
 	}
 }
