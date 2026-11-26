@@ -17,6 +17,9 @@ All notable changes to this project are documented in this file. The format is b
 - `MaxBodyBytes`, a route option that sets the largest request body of one route.
 - `RateLimit`, middleware that answers 429 when a client sends too many requests, with the
   `RateLimit` headers and `Retry-After`.
+- The `jwt` module: `Tokens` signs and verifies JSON Web Tokens with a secret, a key pair or
+  the keys of an identity provider, and its guard puts the claims in the context and can
+  require a role.
 - `examples/tasks`, a complete application with two feature modules, a guard, transactions
   across modules and tests.
 

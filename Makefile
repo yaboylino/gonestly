@@ -5,7 +5,7 @@ GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$
 GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
 # Every Go module in the repository; integrations have their own because of their dependencies.
-MODULES := . validator sql cmd/gonestly examples/tasks
+MODULES := . validator sql jwt cmd/gonestly examples/tasks
 
 # The SQL tests also run against PostgreSQL and MySQL when GONESTLY_TEST_POSTGRES and
 # GONESTLY_TEST_MYSQL are set; `make databases` starts matching databases in Docker.

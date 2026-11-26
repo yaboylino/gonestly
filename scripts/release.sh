@@ -4,7 +4,7 @@ set -euo pipefail
 
 version=${1:?usage: scripts/release.sh v0.1.0}
 module=github.com/yaboylino/gonestly
-libraries=(validator sql)
+libraries=(validator sql jwt)
 
 fail() { echo "release: $*" >&2; exit 1; }
 step() { printf '\n==> %s (%ss)\n' "$1" "$SECONDS"; }
@@ -21,7 +21,7 @@ grep -q '^## \[Unreleased\]$' CHANGELOG.md || fail "CHANGELOG.md has no Unreleas
 step "Checking"
 make check
 
-step "Releasing the framework, ${libraries[*]}"
+step "Releasing the framework and ${libraries[*]}"
 date=$(date -u +%Y-%m-%d)
 perl -0pi -e "s/^## \[Unreleased\]\$/## [Unreleased]\n\n## [${version#v}] - $date/m" CHANGELOG.md
 for library in "${libraries[@]}"; do

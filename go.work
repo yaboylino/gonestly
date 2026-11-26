@@ -6,6 +6,7 @@ use (
 	.
 	./cmd/gonestly
 	./examples/tasks
+	./jwt
 	./sql
 	./validator
 )
