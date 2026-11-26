@@ -146,12 +146,13 @@ your application.
 - [x] `v0.2.0`: forms and uploads, CORS, rate limiting, JWT authentication, upserts and health checks
 - [x] Relations in the query layer: loading related rows and nested writes (`v0.3.0`)
 - [x] `gonestly add database`: create a database and connect the project to it (`v0.3.0`)
-- [x] Caching: a typed cache with memory and Redis stores, response caching and ETags (next release)
-- [x] API versioning in the path or a header, with deprecation and sunset headers (next release)
-- [x] Security headers, cross-site request forgery protection, trusted proxies and Argon2id passwords (next release)
-- [x] Events: an in-process event bus with sync and async handlers (next release)
-- [x] Logging: request ID on every log line, `LogAttrs`, a configurable logger and access log options (next release)
-- [x] Background jobs and cron in the database: the `jobs` module and `gonestly add jobs` (next release)
+- [x] Caching: a typed cache with memory and Redis stores, response caching and ETags (`v0.4.0`)
+- [x] API versioning in the path or a header, with deprecation and sunset headers (`v0.4.0`)
+- [x] Security headers, cross-site request forgery protection, trusted proxies and Argon2id passwords (`v0.4.0`)
+- [x] Events: an in-process event bus with sync and async handlers (`v0.4.0`)
+- [x] Logging: request ID on every log line, `LogAttrs`, a configurable logger and access log options (`v0.4.0`)
+- [x] Background jobs and cron in the database: the `jobs` module and `gonestly add jobs` (`v0.4.0`)
+- [x] Schema from your models: `gonestly migrate dev` writes the migrations (`v0.5.0`)
 
 ## Contributing
 
