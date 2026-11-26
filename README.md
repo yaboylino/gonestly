@@ -146,6 +146,7 @@ your application.
 - [x] `v0.2.0`: forms and uploads, CORS, rate limiting, JWT authentication, upserts and health checks
 - [x] Relations in the query layer: loading related rows and nested writes (`v0.3.0`)
 - [x] `gonestly add database`: create a database and connect the project to it (`v0.3.0`)
+- [x] Logging: request ID on every log line, `LogAttrs`, a configurable logger and access log options (next release)
 - [x] Background jobs and cron in the database: the `jobs` module and `gonestly add jobs` (next release)
 
 ## Contributing

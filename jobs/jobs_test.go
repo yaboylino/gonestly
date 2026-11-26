@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yaboylino/gonestly"
 	"github.com/yaboylino/gonestly/sql"
 )
 
@@ -603,6 +604,31 @@ func TestEnqueueOnlyDoesNotRun(t *testing.T) {
 		_ = q.OnStop(t.Context())
 		if runs.Load() != 0 {
 			t.Error("an enqueue only queue ran a job")
+		}
+	})
+}
+
+func TestJobContinuesTheRequestThatEnqueuedIt(t *testing.T) {
+	databases(t, func(t *testing.T, db *sql.DB) {
+		q := newQueue(t, db, Options{})
+		var seen string
+		job, _ := Define(q, "traced", func(ctx context.Context, _ greeting) error {
+			seen = gonestly.RequestIDFrom(ctx)
+			return nil
+		})
+		ctx := gonestly.WithRequestID(t.Context(), "req-77")
+		id, _ := job.Enqueue(ctx, greeting{})
+		if r := status(t, db, id); r.RequestID == nil || *r.RequestID != "req-77" {
+			t.Fatalf("row = %+v", r)
+		}
+		_, _ = q.RunDue(t.Context())
+		if seen != "req-77" {
+			t.Errorf("the handler saw the request ID %q", seen)
+		}
+		// A job from outside a request has none.
+		id, _ = job.Enqueue(t.Context(), greeting{})
+		if r := status(t, db, id); r.RequestID != nil {
+			t.Errorf("row = %+v", r)
 		}
 	})
 }

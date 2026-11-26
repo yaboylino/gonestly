@@ -18,13 +18,21 @@ import (
 )
 
 func main() {
-	application, err := gonestly.New(app.Module)
-	if err == nil {
-		err = application.Run(context.Background())
-	}
-	if err != nil {
+	if err := run(); err != nil {
 		// Printed as it is: a build error lists every problem on a line of its own.
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func run() error {
+	logger, err := app.NewLogger()
+	if err != nil {
+		return err
+	}
+	application, err := gonestly.New(app.Module, gonestly.WithLogger(logger))
+	if err != nil {
+		return err
+	}
+	return application.Run(context.Background())
 }

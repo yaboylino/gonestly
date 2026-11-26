@@ -12,6 +12,7 @@ CREATE TABLE gonestly_jobs (
     locked_until BIGINT,
     last_error TEXT,
     unique_key VARCHAR(255),
+    request_id VARCHAR(128),
     created_at BIGINT NOT NULL,
     finished_at BIGINT
 );

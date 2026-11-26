@@ -18,8 +18,9 @@ type options struct {
 	listen          bool
 }
 
-// WithLogger sets the logger the application logs to and provides to every module.
-// It defaults to slog.Default().
+// WithLogger sets the logger the application logs to and provides to every module; see
+// NewLogger. It defaults to slog.Default(). The application wraps it with LogHandler, so a
+// line logged with a request's context carries the request ID.
 func WithLogger(logger *slog.Logger) Option {
 	return func(o *options) {
 		if logger != nil {

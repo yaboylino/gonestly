@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/yaboylino/gonestly"
 	"github.com/yaboylino/gonestly/sql"
 )
 
@@ -86,6 +87,9 @@ func (j *Job[T]) Enqueue(ctx context.Context, payload T, opts ...Option) (int64,
 	rec := record{
 		Queue: j.set.queue, Name: j.name, Payload: string(data), Status: string(Pending), Priority: s.priority,
 		MaxAttempts: s.maxAttempts, RunAt: ms(runAt.Add(s.delay)), CreatedAt: ms(now),
+	}
+	if id := gonestly.RequestIDFrom(ctx); id != "" {
+		rec.RequestID = &id
 	}
 	if s.unique != "" {
 		if len(s.unique) > 255 {

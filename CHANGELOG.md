@@ -16,6 +16,15 @@ All notable changes to this project are documented in this file. The format is b
   without taking one twice, put back what a shutdown interrupted, take over from a process that
   died, and clean up finished jobs. `Stats`, `Failed`, `Retry` and `RunDue` help to operate
   and test.
+- `NewLogger`, which builds the logger from a level and a format (`text`, `json` or `auto`), and
+  `LogHandler`, which the application now puts around its logger: every line logged with the
+  context of a request, by any provider and by the database, carries its request ID.
+  `gonestly new` reads `LOG_LEVEL` and `LOG_FORMAT`, and `gonestly dev` makes `auto` write text.
+- `LogAttrs` adds attributes to every log line about a request, including its access log line,
+  and `WithRequestID` continues a request elsewhere. A background job runs with the request ID
+  of the request that enqueued it.
+- `AccessLog` options `SkipPaths` and `SlowAfter`, and the route, the client address and the user
+  agent in every access log line.
 - `gonestly add jobs` creates the jobs table as a migration for the database of the project and
   adds the module to the root module.
 
