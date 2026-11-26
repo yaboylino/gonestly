@@ -707,17 +707,22 @@ func TestInspect(t *testing.T) {
 	}
 }
 
+// captureStdout reads while fn writes, because a pipe holds only a few kilobytes on Windows.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
+	out := make(chan string)
+	go func() {
+		data, _ := io.ReadAll(r)
+		out <- string(data)
+	}()
 	original := os.Stdout
 	os.Stdout = w
 	defer func() { os.Stdout = original }()
 	fn()
 	_ = w.Close()
-	out, _ := io.ReadAll(r)
-	return string(out)
+	return <-out
 }
